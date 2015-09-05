@@ -1,95 +1,129 @@
 #! /usr/bin/env python3
 
 # As of Sept 5, 2015, the last value is:
-#      http://oeis.org/A261887
+#      http://oeis.org/A261892
 
-import os
+#import os
 import time
 import sqlite3
 import urllib.request
-import platform
 import random
 import multiprocessing
 import logging
+from bs4 import BeautifulSoup, NavigableString
 
-FORMAT = '%(asctime)-15s | %(message)s'
-logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+def fetch_oeis_internal_entry(oeis_id):
 
-logger = logging.getLogger(__name__)
+    url  = "http://oeis.org/A{:06d}/internal".format(oeis_id)
 
-def fetch_oeis_entry(oeis_id):
-    fetch_node = platform.node()
-    fetch_url  = "http://oeis.org/A{:06d}".format(oeis_id)
     try:
-        t1 = time.time()
-        with urllib.request.urlopen(fetch_url) as response:
+        timestamp = time.time()
+
+        with urllib.request.urlopen(url) as response:
             fetch_html = response.read()
-        t2 = time.time()
-        fetch_timestamp = t1
-        fetch_duration = (t2 - t1)
+
+        soup = BeautifulSoup(fetch_html, 'html.parser')
+        contents = []
+
+        for tt in soup.find_all("tt"):
+
+            contents_line = tt.contents
+
+            if len(contents_line) == 0:
+                # Empty 'tt' tags do occur.
+                continue
+
+            assert len(contents_line) == 1
+            contents_line = contents_line[0]
+
+            assert isinstance(contents_line, NavigableString)
+            contents_line = str(contents_line)
+
+            assert contents_line.endswith("\n")
+            contents_line = contents_line[:-1]
+
+            if contents_line.startswith("%"):
+                contents.append(contents_line)
+
+        contents = "\n".join(contents)
+
     except BaseException as exception:
-        logging.exception("error while fetching '{}'".format(fetch_url))
+        logging.error("error while fetching '{}'".format(url))
         return None
-    return (oeis_id, fetch_node, fetch_url, fetch_timestamp, fetch_duration, fetch_html)
 
-database_filename = "fetch_oeis.sqlite3"
+    return (oeis_id, timestamp, contents)
 
-dbconn = sqlite3.connect(database_filename)
-dbcursor = dbconn.cursor()
+def main():
 
-schema = """
-         CREATE TABLE IF NOT EXISTS fetched_oeis_entries (
-             id               INTEGER PRIMARY KEY,
-             oeis_id          INTEGER NOT NULL,
-             fetch_node       TEXT    NOT NULL,
-             fetch_url        TEXT    NOT NULL,
-             fetch_timestamp  INTEGER NOT NULL,
-             fetch_duration   REAL    NOT NULL,
-             fetch_html       BLOB    NOT NULL
-         );
-         CREATE INDEX IF NOT EXISTS oeis_id_index ON fetched_oeis_entries(oeis_id);
-         """
+    FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
+    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-schema = "\n".join(line[9:] for line in schema.split("\n"))[1:-1]
-dbcursor.executescript(schema)
+    logger = logging.getLogger(__name__)
 
-LAST_OEIS_ID = 261887
-WANTED_ENTRIES = set(range(1, LAST_OEIS_ID + 1))
-FETCH_BATCH_SIZE = 100
-SLEEP_AFTER_BATCH = 1
-NUM_PROCESSES = 20
+    database_filename = "fetch_oeis_internal.sqlite3"
 
-pool = multiprocessing.Pool(NUM_PROCESSES)
-while True:
+    dbconn = sqlite3.connect(database_filename)
+    dbcursor = dbconn.cursor()
 
-    dbcursor.execute("SELECT DISTINCT oeis_id FROM fetched_oeis_entries;")
-    entries_in_local_database = dbcursor.fetchall()
-    entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
+    schema = """
+             CREATE TABLE IF NOT EXISTS fetched_oeis_entries (
+                 id         INTEGER PRIMARY KEY,
+                 oeis_id    INTEGER NOT NULL,
+                 timestamp  INTEGER NOT NULL,
+                 contents   BLOB    NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS fetched_oeis_entries_index ON fetched_oeis_entries(oeis_id);
+             """
 
-    logger.info("entries present in local database: {}".format(len(entries_in_local_database)))
+    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+    dbcursor.executescript(schema)
 
-    NEEDED_ENTRIES = WANTED_ENTRIES - entries_in_local_database
+    LAST_OEIS_ID = 261892
+    all_entries = set(range(1, LAST_OEIS_ID + 1))
+    FETCH_BATCH_SIZE = 200
+    SLEEP_AFTER_BATCH = 1.5
+    NUM_PROCESSES = 20
 
-    logger.info("needed entries: {}".format(len(NEEDED_ENTRIES)))
+    pool = multiprocessing.Pool(NUM_PROCESSES)
+    while True:
 
-    fetch_count = min(FETCH_BATCH_SIZE, len(NEEDED_ENTRIES))
-    FETCH_ENTRIES = random.sample(NEEDED_ENTRIES, fetch_count)
+        dbcursor.execute("SELECT DISTINCT oeis_id FROM fetched_oeis_entries;")
 
-    logger.info("fetching {} entries ...".format(len(FETCH_ENTRIES)))
+        entries_in_local_database = dbcursor.fetchall()
+        entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
 
-    t1 = time.time()
-    results = pool.map(fetch_oeis_entry, FETCH_ENTRIES)
-    t2 = time.time()
+        logger.info("entries present in local database: {}".format(len(entries_in_local_database)))
 
-    duration = (t2 - t1)
-    logger.info("{} parallel fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(FETCH_ENTRIES), duration, len(FETCH_ENTRIES) / duration))
+        entries_to_be_fetched = all_entries - entries_in_local_database
 
-    results = [result for result in results if result is not None]
+        logger.info("total number of entries still to be fetched: {}".format(len(entries_to_be_fetched)))
 
-    logger.info("{} fetched entries are valid.".format(len(FETCH_ENTRIES)))
+        if len(entries_to_be_fetched) == 0:
+            break
 
-    dbcursor.executemany("INSERT INTO fetched_oeis_entries(oeis_id, fetch_node, fetch_url, fetch_timestamp, fetch_duration, fetch_html) VALUES (?, ?, ?, ?, ?, ?);", results)
-    dbconn.commit()
+        # randomly select some entries
 
-    logger.info("sleeping...")
-    time.sleep(SLEEP_AFTER_BATCH)
+        fetch_count = min(FETCH_BATCH_SIZE, len(entries_to_be_fetched))
+        fetch_entries = random.sample(entries_to_be_fetched, fetch_count)
+
+        logger.info("fetching {} entries ...".format(len(fetch_entries)))
+
+        t1 = time.time()
+        results = pool.map(fetch_oeis_internal_entry, fetch_entries)
+        t2 = time.time()
+
+        duration = (t2 - t1)
+        logger.info("{} parallel fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(fetch_entries), duration, len(fetch_entries) / duration))
+
+        results = [result for result in results if result is not None]
+
+        logger.info("{} total bytes fetched in {} valid entries.".format(sum(len(result[-1]) for result in results), len(results)))
+
+        dbcursor.executemany("INSERT OR REPLACE INTO fetched_oeis_entries(oeis_id, timestamp, contents) VALUES (?, ?, ?);", results)
+        dbconn.commit()
+
+        logger.info("sleeping ...")
+        time.sleep(SLEEP_AFTER_BATCH)
+
+if __name__ == "__main__":
+    main()
