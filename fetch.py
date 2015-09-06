@@ -41,6 +41,20 @@ def oeis_internal_html_to_contents(html):
 
     return contents
 
+class FetchFailure:
+    ok = False
+    is404 = False
+
+class FetchFailure404(FetchFailure):
+    is404 = True
+
+class FetchSuccess:
+    ok = True
+    def __init__(self, oeis_id, timestamp, contents):
+        self.oeis_id = oeis_id
+        self.timestamp = timestamp
+        self.contents = contents
+
 def fetch_oeis_internal_entry(oeis_id):
 
     # We fetch the "internal" version of the OEIS entry,
@@ -57,17 +71,19 @@ def fetch_oeis_internal_entry(oeis_id):
         with urllib.request.urlopen(url) as response:
             html = response.read()
     except urllib.error.HTTPError as exception:
-        # Log the failure, and return None.
-        logging.error("Error while fetching '{}': {}".format(url, exception))
-        return exception.code
+        logger.error("Error while fetching '{}': {}".format(url, exception))
+        if exception.code == 404:
+            return FetchFailure404()
+        else:
+            return FetchFailure()
     except urllib.error.URLError as exception:
         # Log the failure, and return None.
-        logging.error("Error while fetching '{}': {}".format(url, exception))
-        return -1
+        logger.error("Error while fetching '{}': {}".format(url, exception))
+        return FetchFailure()
 
     contents = oeis_internal_html_to_contents(html)
 
-    return (oeis_id, timestamp, contents)
+    return FetchSuccess(oeis_id, timestamp, contents)
 
 def find_highest_oeis_id():
 
@@ -82,33 +98,44 @@ def find_highest_oeis_id():
 
         result = fetch_oeis_internal_entry(OEIS_ATTEMPT)
 
-        if isinstance(result, tuple): # success!
+        if result.ok: # success!
             OEIS_SUCCESS = OEIS_ATTEMPT
-        elif result == 404:
+        elif result.is404:
             # Pages that don't exist are indicated with a HTTP 404 response.
             OEIS_FAILURE = OEIS_ATTEMPT
         else:
-            logger.warning("Unexpected response: {} -- retrying in 5 seconds.".format(result))
+            # Some other error occurred. We have to retry.
+            logger.warning("Unexpected fetch result, retrying in 5 seconds.")
             time.sleep(5.0)
 
     logger.info("Highest OEIS entry is A{:06}.".format(OEIS_SUCCESS))
     return OEIS_SUCCESS
 
+def setup_schema(dbconn):
+
+    schema = """
+             CREATE TABLE IF NOT EXISTS oeis_entries (
+                 oeis_id    INTEGER  PRIMARY KEY NOT NULL,
+                 timestamp  REAL                 NOT NULL,
+                 contents   TEXT                 NOT NULL
+             )
+             """
+
+    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+    dbconn.executescript(schema)
+
 def fetch_entries_into_database(dbconn, entries):
 
-    FETCH_BATCH_SIZE  = 200
-    NUM_PROCESSES     = 20
-    SLEEP_AFTER_BATCH = 5.0
+    FETCH_BATCH_SIZE  = 500
+    NUM_PROCESSES     =  20
+    SLEEP_AFTER_BATCH = 5.0 # [seconds]
 
     pool = multiprocessing.Pool(NUM_PROCESSES)
 
     tStart = time.time()
     nStart = len(entries)
 
-    while True:
-
-        if len(entries) == 0:
-            break
+    while len(entries) > 0:
 
         random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
         random_entries_to_be_fetched = random.sample(entries, random_entries_count)
@@ -122,16 +149,18 @@ def fetch_entries_into_database(dbconn, entries):
         duration = (t2 - t1)
         logger.info("{} parallel fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
 
-        results = [result for result in results if isinstance(result, tuple)]
+        results = [result for result in results if result.ok]
 
-        logger.info("Inserting {} valid entries ({} bytes) in database ...".format(len(results), sum(len(result[-1]) for result in results)))
+        logger.info("Inserting {} valid entries ({} bytes) in database ...".format(len(results), sum(len(result.contents) for result in results)))
 
-        dbconn.executemany("INSERT OR REPLACE INTO oeis_entries(oeis_id, timestamp, contents) VALUES (?, ?, ?)", results)
+        insert_entries = [(result.oeis_id, result.timestamp, result.contents) for result in results]
+
+        dbconn.executemany("INSERT OR REPLACE INTO oeis_entries(oeis_id, timestamp, contents) VALUES (?, ?, ?)", insert_entries)
         dbconn.commit()
 
-        # Ditch entries
+        # Mark succesful entries as fetched
 
-        entries -= set(oeis_id for (oeis_id, timestamp, contents) in results)
+        entries -= set(result.oeis_id for result in results)
 
         tCurrent = time.time()
         nCurrent = len(entries)
@@ -143,20 +172,6 @@ def fetch_entries_into_database(dbconn, entries):
 
         logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
         time.sleep(SLEEP_AFTER_BATCH)
-
-def setup_schema(dbconn):
-
-    schema = """
-             CREATE TABLE IF NOT EXISTS oeis_entries (
-                 id         INTEGER  PRIMARY KEY,
-                 oeis_id    INTEGER  UNIQUE NOT NULL,
-                 timestamp  REAL     NOT NULL,
-                 contents   TEXT     NOT NULL
-             )
-             """
-
-    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
-    dbconn.executescript(schema)
 
 def make_database_complete(dbconn, highest_oeis_id):
 
@@ -208,7 +223,7 @@ def main():
     FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-    database_filename = "fetch_oeis_internal.sqlite3"
+    database_filename = "oeis.sqlite3"
 
     while True:
 
@@ -217,7 +232,7 @@ def main():
             setup_schema(dbconn)
             highest_oeis_id = find_highest_oeis_id()
             make_database_complete(dbconn, highest_oeis_id)
-            refresh_oldest_database_entries(dbconn, highest_oeis_id // 100) # refresh 1%
+            refresh_oldest_database_entries(dbconn, highest_oeis_id // 100) # refresh 1% of entries
             vacuum_database(dbconn)
         finally:
             dbconn.close()
