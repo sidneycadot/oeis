@@ -70,7 +70,7 @@ def main():
                  id         INTEGER PRIMARY KEY,
                  oeis_id    INTEGER NOT NULL,
                  timestamp  INTEGER NOT NULL,
-                 contents   BLOB    NOT NULL
+                 contents   TEXT    NOT NULL
              );
              CREATE INDEX IF NOT EXISTS fetched_oeis_entries_index ON fetched_oeis_entries(oeis_id);
              """
