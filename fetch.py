@@ -1,129 +1,231 @@
 #! /usr/bin/env python3
 
-# As of Sept 5, 2015, the last value is:
-#      http://oeis.org/A261892
-
-#import os
 import time
 import sqlite3
 import urllib.request
 import random
 import multiprocessing
 import logging
+
 from bs4 import BeautifulSoup, NavigableString
+
+logger = logging.getLogger(__name__)
+
+def oeis_internal_html_to_contents(html):
+    """ Parse the OEIS html
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+    contents = []
+
+    for tt in soup.find_all("tt"):
+
+        contents_line = tt.contents
+
+        if len(contents_line) == 0:
+            # Empty 'tt' tags do occur; we discard them.
+            continue
+
+        assert len(contents_line) == 1
+        contents_line = contents_line[0]
+
+        assert isinstance(contents_line, NavigableString)
+        contents_line = str(contents_line)
+
+        assert contents_line.endswith("\n")
+        contents_line = contents_line[:-1]
+
+        if contents_line.startswith("%"):
+            contents.append(contents_line)
+
+    contents = "\n".join(contents)
+
+    return contents
 
 def fetch_oeis_internal_entry(oeis_id):
 
-    url  = "http://oeis.org/A{:06d}/internal".format(oeis_id)
+    # We fetch the "internal" version of the OEIS entry,
+    # which is easy to parse and documented.
+
+    url = "http://oeis.org/A{:06d}/internal".format(oeis_id)
+
+    timestamp = time.time()
+
+    # Try to fetch the page.
+    # Any failure that leads to an exception leads to an abort.
 
     try:
-        timestamp = time.time()
-
         with urllib.request.urlopen(url) as response:
-            fetch_html = response.read()
+            html = response.read()
+    except urllib.error.HTTPError as exception:
+        # Log the failure, and return None.
+        logging.error("Error while fetching '{}': {}".format(url, exception))
+        return exception.code
+    except urllib.error.URLError as exception:
+        # Log the failure, and return None.
+        logging.error("Error while fetching '{}': {}".format(url, exception))
+        return -1
 
-        soup = BeautifulSoup(fetch_html, 'html.parser')
-        contents = []
-
-        for tt in soup.find_all("tt"):
-
-            contents_line = tt.contents
-
-            if len(contents_line) == 0:
-                # Empty 'tt' tags do occur.
-                continue
-
-            assert len(contents_line) == 1
-            contents_line = contents_line[0]
-
-            assert isinstance(contents_line, NavigableString)
-            contents_line = str(contents_line)
-
-            assert contents_line.endswith("\n")
-            contents_line = contents_line[:-1]
-
-            if contents_line.startswith("%"):
-                contents.append(contents_line)
-
-        contents = "\n".join(contents)
-
-    except BaseException as exception:
-        logging.error("error while fetching '{}'".format(url))
-        return None
+    contents = oeis_internal_html_to_contents(html)
 
     return (oeis_id, timestamp, contents)
+
+def find_highest_oeis_id():
+
+    OEIS_SUCCESS =  260000
+    OEIS_FAILURE = 1000000
+
+    while OEIS_SUCCESS + 1 != OEIS_FAILURE:
+
+        OEIS_ATTEMPT = (OEIS_SUCCESS + OEIS_FAILURE) // 2
+
+        logger.info("Highest OEIS range is ({}, {}), attempting to fetch entry # {} ...".format(OEIS_SUCCESS, OEIS_FAILURE, OEIS_ATTEMPT))
+
+        result = fetch_oeis_internal_entry(OEIS_ATTEMPT)
+
+        if isinstance(result, tuple): # success!
+            OEIS_SUCCESS = OEIS_ATTEMPT
+        elif result == 404:
+            # Pages that don't exist are indicated with a HTTP 404 response.
+            OEIS_FAILURE = OEIS_ATTEMPT
+        else:
+            logger.warning("Unexpected response: {} -- retrying in 5 seconds.".format(result))
+            time.sleep(5.0)
+
+    logger.info("Highest OEIS entry is A{:06}.".format(OEIS_SUCCESS))
+    return OEIS_SUCCESS
+
+def fetch_entries_into_database(dbconn, entries):
+
+    FETCH_BATCH_SIZE  = 200
+    NUM_PROCESSES     = 20
+    SLEEP_AFTER_BATCH = 5.0
+
+    pool = multiprocessing.Pool(NUM_PROCESSES)
+
+    tStart = time.time()
+    nStart = len(entries)
+
+    while True:
+
+        if len(entries) == 0:
+            break
+
+        random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
+        random_entries_to_be_fetched = random.sample(entries, random_entries_count)
+
+        logger.info("Executing parallel fetch for {} out of {} entries.".format(len(random_entries_to_be_fetched), len(entries)))
+
+        t1 = time.time()
+        results = pool.map(fetch_oeis_internal_entry, random_entries_to_be_fetched)
+        t2 = time.time()
+
+        duration = (t2 - t1)
+        logger.info("{} parallel fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
+
+        results = [result for result in results if isinstance(result, tuple)]
+
+        logger.info("Inserting {} valid entries ({} bytes) in database ...".format(len(results), sum(len(result[-1]) for result in results)))
+
+        dbconn.executemany("INSERT OR REPLACE INTO oeis_entries(oeis_id, timestamp, contents) VALUES (?, ?, ?)", results)
+        dbconn.commit()
+
+        # Ditch entries
+
+        entries -= set(oeis_id for (oeis_id, timestamp, contents) in results)
+
+        tCurrent = time.time()
+        nCurrent = len(entries)
+
+        ETC = (tCurrent - tStart) * nCurrent / (nStart - nCurrent)
+        logger.info("Estimated time to completion: {:.1f} minutes.".format(ETC / 60.0))
+
+        # Sleep
+
+        logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
+        time.sleep(SLEEP_AFTER_BATCH)
+
+def setup_schema(dbconn):
+
+    schema = """
+             CREATE TABLE IF NOT EXISTS oeis_entries (
+                 id         INTEGER  PRIMARY KEY,
+                 oeis_id    INTEGER  UNIQUE NOT NULL,
+                 timestamp  REAL     NOT NULL,
+                 contents   TEXT     NOT NULL
+             )
+             """
+
+    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+    dbconn.executescript(schema)
+
+def make_database_complete(dbconn, highest_oeis_id):
+
+    dbcursor = dbconn.cursor()
+    try:
+        dbcursor.execute("SELECT oeis_id FROM oeis_entries")
+        entries_in_local_database = dbcursor.fetchall()
+    finally:
+        dbcursor.close()
+
+    entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
+    logger.info("Entries present in local database: {}".format(len(entries_in_local_database)))
+
+    all_entries = set(range(1, highest_oeis_id + 1))
+
+    missing_entries = set(all_entries) - entries_in_local_database
+    logger.info("Missing entries to be fetched: {}".format(len(missing_entries)))
+
+    fetch_entries_into_database(dbconn, missing_entries)
+
+def refresh_oldest_database_entries(dbconn, howmany):
+
+    dbcursor = dbconn.cursor()
+    try:
+        dbcursor.execute("SELECT oeis_id FROM oeis_entries ORDER BY timestamp LIMIT {}".format(howmany))
+        oldest_entries = dbcursor.fetchall()
+    finally:
+        dbcursor.close()
+
+    oldest_entries = set(oeis_id for (oeis_id, ) in oldest_entries)
+    logger.info("Oldest entries in local database selected for refresh: {}".format(len(oldest_entries)))
+
+    fetch_entries_into_database(dbconn, oldest_entries)
+
+def vacuum_database(dbconn):
+
+    logger.info("Initiating VACUUM on database ...")
+
+    t1 = time.time()
+    dbconn.execute("VACUUM")
+    t2 = time.time()
+
+    duration = (t2 - t1)
+
+    logger.info("VACUUM done in {:.3f} seconds.".format(duration))
 
 def main():
 
     FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-    logger = logging.getLogger(__name__)
-
     database_filename = "fetch_oeis_internal.sqlite3"
 
-    dbconn = sqlite3.connect(database_filename)
-    dbcursor = dbconn.cursor()
-
-    schema = """
-             CREATE TABLE IF NOT EXISTS fetched_oeis_entries (
-                 id         INTEGER PRIMARY KEY,
-                 oeis_id    INTEGER NOT NULL,
-                 timestamp  INTEGER NOT NULL,
-                 contents   BLOB    NOT NULL
-             );
-             CREATE INDEX IF NOT EXISTS fetched_oeis_entries_index ON fetched_oeis_entries(oeis_id);
-             """
-
-    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
-    dbcursor.executescript(schema)
-
-    LAST_OEIS_ID = 261892
-    all_entries = set(range(1, LAST_OEIS_ID + 1))
-    FETCH_BATCH_SIZE = 200
-    SLEEP_AFTER_BATCH = 1.5
-    NUM_PROCESSES = 20
-
-    pool = multiprocessing.Pool(NUM_PROCESSES)
     while True:
 
-        dbcursor.execute("SELECT DISTINCT oeis_id FROM fetched_oeis_entries;")
+        dbconn = sqlite3.connect(database_filename)
+        try:
+            setup_schema(dbconn)
+            highest_oeis_id = find_highest_oeis_id()
+            make_database_complete(dbconn, highest_oeis_id)
+            refresh_oldest_database_entries(dbconn, highest_oeis_id // 100) # refresh 1%
+            vacuum_database(dbconn)
+        finally:
+            dbconn.close()
 
-        entries_in_local_database = dbcursor.fetchall()
-        entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
+        logger.info("Sleeping for 1 hour ...")
+        time.sleep(3600)
 
-        logger.info("entries present in local database: {}".format(len(entries_in_local_database)))
-
-        entries_to_be_fetched = all_entries - entries_in_local_database
-
-        logger.info("total number of entries still to be fetched: {}".format(len(entries_to_be_fetched)))
-
-        if len(entries_to_be_fetched) == 0:
-            break
-
-        # randomly select some entries
-
-        fetch_count = min(FETCH_BATCH_SIZE, len(entries_to_be_fetched))
-        fetch_entries = random.sample(entries_to_be_fetched, fetch_count)
-
-        logger.info("fetching {} entries ...".format(len(fetch_entries)))
-
-        t1 = time.time()
-        results = pool.map(fetch_oeis_internal_entry, fetch_entries)
-        t2 = time.time()
-
-        duration = (t2 - t1)
-        logger.info("{} parallel fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(fetch_entries), duration, len(fetch_entries) / duration))
-
-        results = [result for result in results if result is not None]
-
-        logger.info("{} total bytes fetched in {} valid entries.".format(sum(len(result[-1]) for result in results), len(results)))
-
-        dbcursor.executemany("INSERT OR REPLACE INTO fetched_oeis_entries(oeis_id, timestamp, contents) VALUES (?, ?, ?);", results)
-        dbconn.commit()
-
-        logger.info("sleeping ...")
-        time.sleep(SLEEP_AFTER_BATCH)
+    logging.shutdown()
 
 if __name__ == "__main__":
     main()
