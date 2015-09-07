@@ -14,15 +14,16 @@ def show_entries(dbconn):
 
     dbcursor = dbconn.cursor()
     try:
-        query = "SELECT t_first_fetch, t_most_recent FROM oeis_entries;"
+        query = "SELECT oeis_id, t_first_fetch, t_most_recent FROM oeis_entries;"
         dbcursor.execute(query)
         data = dbcursor.fetchall()
     finally:
         dbcursor.close()
 
     dt = np.dtype([
-            ("t1", np.float64),
-            ("t2", np.float64)
+            ("oeis_id", np.int),
+            ("t1"     , np.float64),
+            ("t2"     , np.float64)
         ]
     )
 
@@ -30,21 +31,42 @@ def show_entries(dbconn):
 
     print(data.shape, data.dtype)
 
-    age       = t_current - data["t2"]
-    stability = data["t2"] - data["t1"]
+    t1      = data["t1"]
+    t2      = data["t2"]
+    oeis_id = data["oeis_id"]
+
+    age       = t_current - t2
+    stability = t2 - t1
 
     score = age / np.maximum(stability, 1e-6)
 
-    plt.subplot(311)
-    plt.xlabel("stability")
-    plt.ylabel("age")
-    plt.plot(stability, age, '.')
-    plt.subplot(312)
-    plt.hist(stability, bins = 200)
-    plt.xlabel("stability")
-    plt.subplot(313)
-    plt.hist(score, bins = 200, range = (0, 0.10))
-    plt.xlabel("score")
+    plt.subplot(331)
+    plt.xlabel("oeis id")
+    plt.ylabel("t1 [h]")
+    plt.plot(oeis_id, (t1 - t_current) / 3600.0, '.', markersize = 0.5)
+
+    plt.subplot(332)
+    plt.xlabel("oeis id")
+    plt.ylabel("t2 [h]")
+    plt.plot(oeis_id, (t2 - t_current) / 3600.0, '.', markersize = 0.5)
+
+    plt.subplot(334)
+    plt.hist(age / 3600.0, bins = 200, log = True)
+    plt.xlabel("age [h]")
+
+    plt.subplot(335)
+    plt.xlabel("stability [h]")
+    plt.ylabel("age [h]")
+    plt.plot(stability / 3600.0, age / 3600.0, '.', markersize = 0.5)
+
+    plt.subplot(336)
+    plt.hist(score, bins = 200, log = True)
+    plt.xlabel("score [-]")
+
+    plt.subplot(338)
+    plt.hist(stability / 3600.0, bins = 200, log = True)
+    plt.xlabel("stability [h]")
+
     plt.show()
 
 def main():
