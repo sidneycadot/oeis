@@ -126,11 +126,11 @@ class OeisEntry:
     def __str__(self):
         return "A{:06d}".format(self.oeis_id)
 
-def parse_oeis_contents(oeis_id, contents):
+def parse_oeis_content(oeis_id, content):
 
     # ========== check order of directives
 
-    lines = contents.split("\n")
+    lines = content.split("\n")
 
     for line in lines:
         assert len(line) >= 2
@@ -302,7 +302,7 @@ def main():
         dbcursor = dbconn.cursor()
         try:
             t1 = time.time()
-            dbcursor.execute("SELECT oeis_id, contents FROM oeis_entries ORDER BY oeis_id")
+            dbcursor.execute("SELECT oeis_id, content FROM oeis_entries ORDER BY oeis_id")
             oeis_data = dbcursor.fetchall()
             t2 = time.time()
             duration = (t2 - t1)
@@ -316,8 +316,8 @@ def main():
     # ========= parse database entries.
 
     entries = []
-    for (oeis_id, oeis_contents) in oeis_data:
-        entry = parse_oeis_contents(oeis_id, oeis_contents)
+    for (oeis_id, oeis_content) in oeis_data:
+        entry = parse_oeis_content(oeis_id, oeis_content)
         entries.append(entry)
 
     # ========== write pickled version.
