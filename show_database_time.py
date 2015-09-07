@@ -30,14 +30,21 @@ def show_entries(dbconn):
 
     print(data.shape, data.dtype)
 
-    score = (t_current - data["t1"]) / np.maximum(data["t2"] - data["t1"], 1e-6)
+    age       = t_current - data["t2"]
+    stability = data["t2"] - data["t1"]
 
-    plt.subplot(211)
-    plt.xlabel("age")
-    plt.ylabel("stability")
-    plt.plot(t_current - data["t1"], data["t2"] - data["t1"], '.')
-    plt.subplot(212)
-    plt.hist(score, bins = 200)
+    score = age / np.maximum(stability, 1e-6)
+
+    plt.subplot(311)
+    plt.xlabel("stability")
+    plt.ylabel("age")
+    plt.plot(stability, age, '.')
+    plt.subplot(312)
+    plt.hist(stability, bins = 200)
+    plt.xlabel("stability")
+    plt.subplot(313)
+    plt.hist(score, bins = 200, range = (0, 0.10))
+    plt.xlabel("score")
     plt.show()
 
 def main():
