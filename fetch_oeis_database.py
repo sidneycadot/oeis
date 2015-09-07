@@ -128,6 +128,8 @@ def setup_schema(dbconn):
 
 def fetch_entries_into_database(dbconn, entries):
 
+    assert isinstance(entries, set)
+
     FETCH_BATCH_SIZE  = 500
     NUM_PROCESSES     =  20
     SLEEP_AFTER_BATCH = 5.0 # [seconds]
@@ -211,10 +213,11 @@ def fetch_entries_into_database(dbconn, entries):
             ETC = (tCurrent - tStart) * nCurrent / (nStart - nCurrent)
             logger.info("Estimated time to completion: {:.1f} minutes.".format(ETC / 60.0))
 
-            # Sleep
+            # Sleep if we need to fetch more
+            if len(entries) > 0:
+                logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
+                time.sleep(SLEEP_AFTER_BATCH)
 
-            logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
-            time.sleep(SLEEP_AFTER_BATCH)
     finally:
         pool.close()
         pool.join()
@@ -237,6 +240,24 @@ def make_database_complete(dbconn, highest_oeis_id):
     logger.info("Missing entries to be fetched: {}".format(len(missing_entries)))
 
     fetch_entries_into_database(dbconn, missing_entries)
+
+def update_database_entries_randomly(dbconn, howmany):
+
+    dbcursor = dbconn.cursor()
+    try:
+        dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
+        all_entries = dbcursor.fetchall()
+    finally:
+        dbcursor.close()
+
+    all_entries = [oeis_id for (oeis_id, ) in all_entries]
+
+    random_entries_count = min(howmany, len(all_entries))
+    random_entries = set(random.sample(all_entries, random_entries_count))
+
+    logger.info("Random entries in local database selected for refresh: {}".format(len(random_entries)))
+
+    fetch_entries_into_database(dbconn, random_entries)
 
 def update_database_entries_by_score(dbconn, howmany):
 
@@ -281,7 +302,8 @@ def main():
             setup_schema(dbconn)
             highest_oeis_id = find_highest_oeis_id()
             make_database_complete(dbconn, highest_oeis_id)
-            update_database_entries_by_score(dbconn, highest_oeis_id // 200) # refresh 0.5% of entries
+            update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
+            update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
             vacuum_database(dbconn)
         finally:
             dbconn.close()
