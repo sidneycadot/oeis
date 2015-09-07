@@ -308,8 +308,10 @@ def main():
         finally:
             dbconn.close()
 
-        logger.info("Sleeping for 1 hour ...")
-        time.sleep(3600)
+        PAUSE = max(300.0, random.gauss(1800.0, 600.0))
+
+        logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
+        time.sleep(PAUSE)
 
     logging.shutdown()
 
