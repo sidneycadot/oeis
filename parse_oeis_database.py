@@ -9,6 +9,8 @@ import logging
 import pickle
 import re
 
+from OeisEntry import OeisEntry
+
 logger = logging.getLogger(__name__)
 
 # As described here: https://oeis.org/eishelp1.html
@@ -115,17 +117,6 @@ expected_keywords = [
 
 expected_keywords_set = frozenset(expected_keywords)
 
-class OeisEntry:
-    def __init__(self, oeis_id, identification, numbers, name, offset, keywords):
-        self.oeis_id        = oeis_id
-        self.identification = identification
-        self.numbers        = numbers
-        self.name           = name
-        self.offset         = offset
-        self.keywords       = keywords
-    def __str__(self):
-        return "A{:06d}".format(self.oeis_id)
-
 def parse_oeis_content(oeis_id, content):
 
     # ========== check order of directives
@@ -218,9 +209,9 @@ def parse_oeis_content(oeis_id, content):
 
     STU = S + T + U
 
-    numbers = [int(num_string) for num_string in STU.split(",") if len(num_string) > 0]
+    values = [int(num_string) for num_string in STU.split(",") if len(num_string) > 0]
 
-    assert ",".join([str(n) for n in numbers]) == STU
+    assert ",".join([str(n) for n in values]) == STU
 
     # ========== process N directive
 
@@ -246,7 +237,7 @@ def parse_oeis_content(oeis_id, content):
 
     if lineO is None:
         logger.warning("[A{:06}] missing %O directive".format(oeis_id))
-        offset = None
+        offset = () # empty tuple
     else:
         assert lineO.startswith("%O ")
         offset = lineO[3:]
@@ -286,7 +277,7 @@ def parse_oeis_content(oeis_id, content):
 
     # ========== return parsed values
 
-    return OeisEntry(oeis_id, identification, numbers, name, offset, keywords)
+    return OeisEntry(oeis_id, identification, values, name, offset, keywords)
 
 def main():
 
