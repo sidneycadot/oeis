@@ -295,25 +295,27 @@ def main():
 
     database_filename = "oeis.sqlite3"
 
-    while True:
+    try:
 
-        dbconn = sqlite3.connect(database_filename)
-        try:
-            setup_schema(dbconn)
-            highest_oeis_id = find_highest_oeis_id()
-            make_database_complete(dbconn, highest_oeis_id)
-            update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
-            update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
-            vacuum_database(dbconn)
-        finally:
-            dbconn.close()
+        while True:
+            dbconn = sqlite3.connect(database_filename)
+            try:
+                setup_schema(dbconn)
+                highest_oeis_id = find_highest_oeis_id()
+                make_database_complete(dbconn, highest_oeis_id)
+                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
+                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
+                vacuum_database(dbconn)
+            finally:
+                dbconn.close()
 
-        PAUSE = max(300.0, random.gauss(1800.0, 600.0))
+            PAUSE = max(300.0, random.gauss(1800.0, 600.0))
 
-        logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
-        time.sleep(PAUSE)
+            logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
+            time.sleep(PAUSE)
 
-    logging.shutdown()
+    finally:
+        logging.shutdown()
 
 if __name__ == "__main__":
     main()
