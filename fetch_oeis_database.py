@@ -272,7 +272,7 @@ def update_database_entries_by_score(dbconn, howmany):
         dbcursor.close()
 
     highest_score_entries = set(oeis_id for (oeis_id, ) in highest_score_entries)
-    logger.info("Highes-score entries in local database selected for refresh: {}".format(len(highest_score_entries)))
+    logger.info("Highest-score entries in local database selected for refresh: {}".format(len(highest_score_entries)))
 
     fetch_entries_into_database(dbconn, highest_score_entries)
 
