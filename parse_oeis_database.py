@@ -61,6 +61,19 @@ expected_directives = [
 
 expected_directive_order = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
 
+comment_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}" +
+                 "éçß’~Áäāăśőáöèéîíıńóôºüùñúàřžý ﬂ  —  ≤≥  ⇒ ≅ Ḡ ⊆ °⊗·«»…øï↑ëčաå′ 'č',β  £  'š', 'òаכלבו', 'в'," +
+                 " 'д', 'е', ä', 'š', ''Ç', \ufeff  'Ü'ť''и', 'л',  'ç', 'ö', 'ü', 'ı', 'ş'  'м', 'н', 'о', 'п', 'р'," +
+                 " 'с', 'т', 'у', 'ч', 'ш', 'ы', 'ь', 'я', '’ ±  '(', 'ć', 'ę', 'ś' ', 'č', 'ě', 'ř', 'š'')', 'ρ', 'ﬁ' " +
+                 "',', '~', '²', 'μ', 'σ', 'ᵣ', 'ᵤ', '𝒩'  σ 'ℕ','½', '𝒩' 'ᵣ',  'ᵣ', 'ᵤ', '∏' '∑'," +
+                 " '𝓁' 𝓁 𝓁 '∈' ⌈⌉ § ħ ² ł š  γ Χ ∩ ﬁ  ≠ ¢ ⊂ ∞× ωϱπτ ∫ ćõ  š ≈ “ ” ‘´ “” 八發 \u200b \u3000 \uf020  ]+$")
+
+comment_patterns = [re.compile(pattern) for pattern in [
+            "[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}" +
+                 "éçß’~Áäāăśőáöèéîíıńóôºüùñúàřžý ﬂ  —  ≤≥  ⇒ ≅ Ḡ ⊆ °⊗·«»…øï↑ëčաå′ 'č',β  £  'š', 'òаכלבו', 'в', 'д', 'е', ä', 'š', ''Ç', \ufeff  'Ü'ť''и', 'л',  'ç', 'ö', 'ü', 'ı', 'ş'  'м', 'н', 'о', 'п', 'р', 'с', 'т', 'у', 'ч', 'ш', 'ы', 'ь', 'я', '’ ±  '(', 'ć', 'ę', 'ś' ', 'č', 'ě', 'ř', 'š'')', 'ρ', 'ﬁ' ',', '~', '²', 'μ', 'σ', 'ᵣ', 'ᵤ', '𝒩'  σ 'ℕ','½', '𝒩' 'ᵣ',  'ᵣ', 'ᵤ', '∏' '∑', '𝓁' 𝓁 𝓁 '∈' ⌈⌉ § ħ ² ł š  γ Χ ∩ ﬁ  ≠ ¢ ⊂ ∞× ωϱπτ ∫ ćõ  š ≈ “ ” ‘´ “” 八發 \u200b \u3000 \uf020  ]+$"
+        ]
+    ]
+
 identification_patterns = [re.compile(pattern) for pattern in [
             "N[0-9]{4}$",
             "M[0-9]{4}$",
@@ -117,6 +130,14 @@ expected_keywords = [
 
 expected_keywords_set = frozenset(expected_keywords)
 
+def nasty(s):
+    okay = set(" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+    occur = set(s)
+    nasties = occur - okay
+    nasties = sorted(nasties)
+    nasties = ", ".join(["{!r}".format(c) for c in nasties])
+    return nasties
+
 def parse_oeis_content(oeis_id, content):
 
     # ========== check order of directives
@@ -133,14 +154,15 @@ def parse_oeis_content(oeis_id, content):
 
     # ========== collect directives
 
-    lineI = None
-    lineS = None
-    lineT = None
-    lineU = None
-    lineN = None
-    lineK = None
-    lineO = None
-    lineA = []
+    lineI  = None
+    lineS  = None
+    lineT  = None
+    lineU  = None
+    lineN  = None
+    lineK  = None
+    lineO  = None
+    linesA = []
+    linesC = []
 
     for line in lines:
 
@@ -163,6 +185,8 @@ def parse_oeis_content(oeis_id, content):
         if directive == "%N":
             assert lineN is None # only one %N directive is allowed
             lineN = line
+        elif directive == "%C":
+            linesC.append(line) # multiple %C directives are allowed
         elif directive == "%K":
             assert lineK is None # only one %K directive is allowed
             lineK = line
@@ -170,7 +194,7 @@ def parse_oeis_content(oeis_id, content):
             assert lineO is None # only one %O directive is allowed
             lineO = line
         elif directive == "%A":
-            lineA.append(line) # multiple %A directives are allowed
+            linesA.append(line) # multiple %A directives are allowed
 
     # ========== process I directive
 
@@ -222,15 +246,20 @@ def parse_oeis_content(oeis_id, content):
 
     if name_pattern.match(name) is None:
         logger.warning("[A{:06}] bad characters in %N directive: {!r}".format(oeis_id, lineN))
-        #zz = set(name) - set(" 0123456789<=>ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-        #zz = sorted(zz)
-        #zz = ", ".join(["{!r}".format(z) for z in zz])
-        #print("@@@", zz)
-        #assert False
+
+    # ========== process C directive
+
+    for lineC in linesC:
+        assert lineC.startswith("%C ")
+        comment = lineC[3:]
+        if comment_pattern.match(comment) is None:
+            logger.warning("[A{:06}] bad characters in %C directive: {!r}".format(oeis_id, lineC))
+            print("nasty:", nasty(comment))
+            assert False
 
     # ========== process A directive
 
-    if len(lineA) == 0:
+    if len(linesA) == 0:
         logger.warning("[A{:06}] missing %A directive".format(oeis_id))
 
     # ========== process O directive
@@ -311,10 +340,13 @@ def main():
         entry = parse_oeis_content(oeis_id, oeis_content)
         entries.append(entry)
 
-    # ========== write pickled version.
+    # ========== write pickled versions.
 
     with open("oeis.pickle", "wb") as f:
         pickle.dump(entries, f)
+
+    with open("oeis-10000.pickle", "wb") as f:
+        pickle.dump(entries[:10000], f)
 
 if __name__ == "__main__":
     main()
