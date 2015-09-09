@@ -4,73 +4,83 @@ import pickle
 import numpy as np
 import warnings
 
-warnings.simplefilter('ignore')
+#warnings.simplefilter('ignore')
 
-EPSILON = 1e-10
+#EPSILON = 1e-10
 
-def gcd(a, b):
-    a = abs(a)
-    b = abs(b)
-    while a > 0:
-        (a, b) = (b % a, a)
-    return b
+#def gcd(a, b):
+#    a = abs(a)
+#    b = abs(b)
+#    while a > 0:
+#        (a, b) = (b % a, a)
+#    return b
 
-def gcd_many(seq):
-    g = 0
-    for s in seq:
-        g = gcd(g, s)
-    return g
+#def gcd_many(seq):
+#    g = 0
+#    for s in seq:
+#        g = gcd(g, s)
+#    return g
 
-with open("oeis.pickle", "rb") as f:
-    entries = pickle.load(f)
+def oldmain():
 
-for entry in entries:
+    with open("oeis.pickle", "rb") as f:
+        entries = pickle.load(f)
 
-    if entry.oeis_id % 1000 == 0:
-        print("[{}] scanning ...".format(entry))
+    for entry in entries:
 
-    if len(entry.offset) != 2:
-        # unable to interpret offset
-        continue
+        if entry.oeis_id % 1000 == 0:
+            print("[{}] scanning ...".format(entry))
 
-    n = len(entry.values)
+        if len(entry.offset) != 2:
+            # unable to interpret offset
+            continue
 
-    if len(entry.values) < 5:
-        # don't try short sequences
-        continue
+        n = len(entry.values)
 
-    x = entry.offset[0] + np.arange(n)
-    y = entry.values
+        if len(entry.values) < 5:
+            # don't try short sequences
+            continue
 
-    #print(entry)
-    #print("x", x)
-    #print("y", y)
-    #print()
+        x = entry.offset[0] + np.arange(n)
+        y = entry.values
 
-    degree = min(n - 1, 10)
+        #print(entry)
+        #print("x", x)
+        #print("y", y)
+        #print()
 
-    fitpoly = np.polyfit(x, y, degree)
-    assert len(fitpoly) == degree + 1
+        degree = min(n - 1, 10)
 
-    fitpoly[np.abs(fitpoly) < EPSILON] = 0
+        fitpoly = np.polyfit(x, y, degree)
+        assert len(fitpoly) == degree + 1
 
-    while len(fitpoly) > 0 and fitpoly[0] == 0:
-        fitpoly = fitpoly[1:]
+        fitpoly[np.abs(fitpoly) < EPSILON] = 0
 
-    if len(fitpoly) <= n - 5:
+        while len(fitpoly) > 0 and fitpoly[0] == 0:
+            fitpoly = fitpoly[1:]
 
-        DENOM = 3628800 # == factorial(10)
-        fitpoly = np.round(fitpoly * 3628800).astype(np.int)
+        if len(fitpoly) <= n - 5:
 
-        G = gcd_many(fitpoly)
+            DENOM = 3628800 # == factorial(10)
+            fitpoly = np.round(fitpoly * 3628800).astype(np.int)
 
-        if G == 0:
-            DENOM = 1
-        else:
-            fitpoly //= G
-            DENOM   //= G
+            G = gcd_many(fitpoly)
 
-        yfit = np.polyval(fitpoly, x) / DENOM
+            if G == 0:
+                DENOM = 1
+            else:
+                fitpoly //= G
+                DENOM   //= G
 
-        if np.all(np.abs(yfit - y) < EPSILON):
-            print("[{}] <len: {} first_index: {}> found polynomial relation: {} / {} -- name: {}".format(entry, len(entry.values), entry.first_index, fitpoly, DENOM, entry.name))
+            yfit = np.polyval(fitpoly, x) / DENOM
+
+            if np.all(np.abs(yfit - y) < EPSILON):
+                print("[{}] <len: {} first_index: {}> found polynomial relation: {} / {} -- name: {}".format(entry, len(entry.values), entry.first_index, fitpoly, DENOM, entry.name))
+
+def main():
+
+    with open("oeis-10000.pickle", "rb") as f:
+        entries = pickle.load(f)
+
+if __name__ == "__main__":
+    main()
