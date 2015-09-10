@@ -10,6 +10,7 @@ import pickle
 import re
 
 from OeisEntry import OeisEntry
+from charmap import acceptable_characters, nasty
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +62,6 @@ expected_directives = [
 
 expected_directive_order = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
 
-comment_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~" +
-                            "¢£§«°±²´·º»½ÁÇ×ÜßàáäåçèéëíîïñòóôõöøùúüýāăćčęěħıłńőřśşšťžΧβγμπρστωϱавдеилмнопрстучшыьяաבוכלᵣᵤḠ\u200b—‘’“”…′ℕ↑⇒∈∏∑∞∩∫≅≈≠≤≥⊂⊆⊗⌈⌉\u3000八發\uf020ﬁﬂ\ufeff𝒩𝓁]+$")
-
-detailed_reference_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~" +
-                                        "\x7f§«°±´¸»ÁÇÉÖ×ÚÜßàáäåçèéêëíîïñóôõöøùúüýăąćČčěłńőŒřŚŞşŠšũūżžǎ́Λλμπϕ\u2002\u2009\u200e‐—’“”…∞∪≡ﬀﬁ]+$")
-
-link_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~" +
-                          "\x81£§©«®°±´µ·»ÁÂÃÅÆÉÕÖ×ÚÜßàáâäåçèéêëíîïñòóôõöøúûüýĀāăćČčěğĭıłńņňőœřśşŠšţūŽžΓΔΛΣΨαβγδζθπστφωϕНРСагдезийклнопрстхчыяאבגדוכלקרשתṭ\u200e—’“”…∏∑√∣≡⌊⌋ﬀﬁﬂ]+$")
-
 identification_patterns = [re.compile(pattern) for pattern in [
             "N[0-9]{4}$",
             "M[0-9]{4}$",
@@ -77,16 +69,6 @@ identification_patterns = [re.compile(pattern) for pattern in [
             "M[0-9]{4} N[0-9]{4} N[0-9]{4}$"
         ]
     ]
-
-# A219022 has some arabic in its %N directive:
-ASCII = " !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~"
-EXTENDED_LETTERS = "íéńàúøőöåäáüωÃÁîŜèóσ"
-EXTENDED_SYMBOLS = "…∈≤≥•·°º×’´⌈⌉"
-LIGATURES = "ﬂﬁﬀ"
-A219022_ARABIC = "Āṭ" + "आर्यभट"
-#XCODES = "\xa0\xad"
-
-name_pattern = re.compile("[" + ASCII + EXTENDED_LETTERS + EXTENDED_SYMBOLS + LIGATURES + A219022_ARABIC + "]+$")
 
 expected_keywords = [
     "base",  # dependent on base used for sequence
@@ -126,16 +108,6 @@ expected_keywords = [
 
 expected_keywords_set = frozenset(expected_keywords)
 
-def nasty(s):
-    okay = set(" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-    occur = set(s)
-    nasties = occur - okay
-    nasties = sorted(nasties)
-    nasties = ", ".join(["{!r}".format(c) for c in nasties])
-    return nasties
-
-CHARDICT = {}
-
 def parse_oeis_content(oeis_id, content):
 
     # ========== check order of directives
@@ -152,162 +124,149 @@ def parse_oeis_content(oeis_id, content):
 
     # ========== collect directives
 
-    lineI  = None
-    lineS  = None
-    lineT  = None
-    lineU  = None
-    lineN  = None
-    linesC = []
-    linesD = []
-    linesH = []
-    lineK  = None
-    lineO  = None
-    linesA = []
+    line_I  = None
+    line_S  = None
+    line_T  = None
+    line_U  = None
+    line_N  = None
+    lines_C = []
+    lines_D = []
+    lines_H = []
+    line_K  = None
+    line_O  = None
+    lines_A = []
 
     for line in lines:
 
         directive = line[:2]
-
-        if directive not in CHARDICT:
-            CHARDICT[directive] = set()
-        CHARDICT[directive] |= set(line[2:])
-
         assert directive in expected_directives
 
+        if directive in acceptable_characters:
+            unacceptable_characters = set(line) - acceptable_characters[directive]
+            if unacceptable_characters:
+                logger.warning("[A{:06}] unacceptable characters in directive {!r}: {}".format(oeis_id, line, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
+
         if directive == "%I":
-            assert lineI is None # only one %I directive is allowed
-            lineI = line
+            assert line_I is None # only one %I directive is allowed
+            line_I = line
         if directive == "%S":
-            assert lineS is None # only one %S directive is allowed
-            lineS = line
+            assert line_S is None # only one %S directive is allowed
+            line_S = line
         elif directive == "%T":
-            assert lineT is None # only one %T directive is allowed
-            lineT = line
+            assert line_T is None # only one %T directive is allowed
+            line_T = line
         elif directive == "%U":
-            assert lineU is None # only one %U directive is allowed
-            lineU = line
+            assert line_U is None # only one %U directive is allowed
+            line_U = line
         if directive == "%N":
-            assert lineN is None # only one %N directive is allowed
-            lineN = line
+            assert line_N is None # only one %N directive is allowed
+            line_N = line
         elif directive == "%C":
-            linesC.append(line) # multiple %C directives are allowed
+            lines_C.append(line) # multiple %C directives are allowed
         elif directive == "%D":
-            linesD.append(line) # multiple %D directives are allowed
+            lines_D.append(line) # multiple %D directives are allowed
         elif directive == "%H":
-            linesH.append(line) # multiple %H directives are allowed
+            lines_H.append(line) # multiple %H directives are allowed
         elif directive == "%K":
-            assert lineK is None # only one %K directive is allowed
-            lineK = line
+            assert line_K is None # only one %K directive is allowed
+            line_K = line
         elif directive == "%O":
-            assert lineO is None # only one %O directive is allowed
-            lineO = line
+            assert line_O is None # only one %O directive is allowed
+            line_O = line
         elif directive == "%A":
-            linesA.append(line) # multiple %A directives are allowed
+            lines_A.append(line) # multiple %A directives are allowed
 
     # ========== process I directive
 
-    assert (lineI is not None)
+    assert (line_I is not None)
 
-    if lineI == "%I":
+    if line_I == "%I":
         identification = None
     else:
-        assert lineI.startswith("%I ")
-        identification = lineI[3:]
+        assert line_I.startswith("%I ")
+        identification = line_I[3:]
 
         for identification_pattern in identification_patterns:
             if identification_pattern.match(identification) is not None:
                 break
         else:
-            logger.warning("[A{:06}] ill-formatted %I directive: '{}'".format(oeis_id, lineI))
+            logger.warning("[A{:06}] ill-formatted %I directive: '{}'".format(oeis_id, line_I))
 
     # ========== process S/T/U directives
 
     # An S line is mandatory.
     # If a T/U line is present, the previous line should be present and end in a comma, and vice versa.
 
-    assert (lineS is not None)
-    assert (lineT is not None) == (lineS is not None and lineS.endswith(","))
-    assert (lineU is not None) == (lineT is not None and lineT.endswith(","))
+    assert (line_S is not None)
+    assert (line_T is not None) == (line_S is not None and line_S.endswith(","))
+    assert (line_U is not None) == (line_T is not None and line_T.endswith(","))
 
     # Synthesize numbers
 
-    assert (lineS is None) or lineS.startswith("%S ")
-    assert (lineT is None) or lineT.startswith("%T ")
-    assert (lineU is None) or lineU.startswith("%U ")
+    assert (line_S is None) or line_S.startswith("%S ")
+    assert (line_T is None) or line_T.startswith("%T ")
+    assert (line_U is None) or line_U.startswith("%U ")
 
-    S = "" if lineS is None else lineS[3:]
-    T = "" if lineT is None else lineT[3:]
-    U = "" if lineU is None else lineU[3:]
+    S = "" if line_S is None else line_S[3:]
+    T = "" if line_T is None else line_T[3:]
+    U = "" if line_U is None else line_U[3:]
 
     STU = S + T + U
 
-    values = [int(num_string) for num_string in STU.split(",") if len(num_string) > 0]
+    values = [int(value_string) for value_string in STU.split(",") if len(value_string) > 0]
 
     assert ",".join([str(n) for n in values]) == STU
 
     # ========== process N directive
 
-    assert (lineN is not None)
-    assert lineN.startswith("%N ")
+    assert (line_N is not None)
+    assert line_N.startswith("%N ")
 
-    name = lineN[3:]
 
-    if name_pattern.match(name) is None:
-        logger.warning("[A{:06}] bad characters in %N directive: {!r}".format(oeis_id, lineN))
+    name = line_N[3:]
 
     # ========== process C directive
 
-    for lineC in linesC:
-        assert lineC.startswith("%C ")
-        comment = lineC[3:]
-        if comment_pattern.match(comment) is None:
-            logger.warning("[A{:06}] bad characters in %C directive: {!r}".format(oeis_id, lineC))
-            print("nasty:", nasty(comment))
-            assert False
+    for line_C in lines_C:
+
+        assert line_C.startswith("%C ")
+        comment = line_C[3:]
 
     # ========== process D directive
 
-    for lineD in linesD:
-        assert lineD.startswith("%D ")
-        detailed_reference = lineD[3:]
-        if detailed_reference_pattern.match(detailed_reference) is None:
-            logger.warning("[A{:06}] bad characters in %D directive: {!r}".format(oeis_id, lineD))
-            print("nasty:", nasty(detailed_reference))
-            assert False
+    for line_D in lines_D:
+        assert line_D.startswith("%D ")
+        detailed_reference = line_D[3:]
 
     # ========== process H directive
 
-    for lineH in linesH:
-        assert lineH.startswith("%H ")
-        link = lineH[3:]
-        if link_pattern.match(link) is None:
-            logger.warning("[A{:06}] bad characters in %H directive: {!r}".format(oeis_id, lineH))
-            print("nasty:", nasty(link))
-            assert False
+    for line_H in lines_H:
+        assert line_H.startswith("%H ")
+        link = line_H[3:]
 
     # ========== process A directive
 
-    if len(linesA) == 0:
+    if len(lines_A) == 0:
         logger.warning("[A{:06}] missing %A directive".format(oeis_id))
 
     # ========== process O directive
 
-    if lineO is None:
+    if line_O is None:
         logger.warning("[A{:06}] missing %O directive".format(oeis_id))
         offset = () # empty tuple
     else:
-        assert lineO.startswith("%O ")
-        offset = lineO[3:]
+        assert line_O.startswith("%O ")
+        offset = line_O[3:]
 
         offset = tuple(int(o) for o in offset.split(","))
         if len(offset) != 2:
-            logger.warning("[A{:06}] ill-formatted %O directive: {!r}".format(oeis_id, lineO))
+            logger.warning("[A{:06}] ill-formatted %O directive: {!r}".format(oeis_id, line_O))
             pass
 
     # ========== process K directive
 
-    assert (lineK is not None) and lineK.startswith("%K ")
-    keywords = lineK[3:]
+    assert (line_K is not None) and line_K.startswith("%K ")
+    keywords = line_K[3:]
 
     keywords = keywords.split(",")
 
@@ -317,16 +276,16 @@ def parse_oeis_content(oeis_id, content):
 
     for unexpected_keyword in sorted(unexpected_keywords):
         if unexpected_keyword == "":
-            logger.warning("[A{:06}] unexpected empty keyword in %K directive: {!r}".format(oeis_id, lineK))
+            logger.warning("[A{:06}] unexpected empty keyword in %K directive: {!r}".format(oeis_id, line_K))
         else:
-            logger.warning("[A{:06}] unexpected keyword '{}' in %K directive: {!r}".format(oeis_id, unexpected_keyword, lineK))
+            logger.warning("[A{:06}] unexpected keyword '{}' in %K directive: {!r}".format(oeis_id, unexpected_keyword, line_K))
 
     # Check for duplicate keywords
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] keyword '{}' occurs {} times in %K directive: {!r}".format(oeis_id, keyword, count, lineK))
+            logger.warning("[A{:06}] keyword '{}' occurs {} times in %K directive: {!r}".format(oeis_id, keyword, count, line_K))
 
     # Canonify keywords: remove empty keywords and duplicates, and sort.
 
@@ -378,6 +337,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    for k in sorted(CHARDICT.keys()):
-        print(repr(k), repr("".join(sorted(CHARDICT[k]))))
