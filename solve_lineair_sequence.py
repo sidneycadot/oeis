@@ -4,6 +4,7 @@ import pickle
 import numpy as np
 from fractions import Fraction
 from fraction_based_linear_algebra import inverse_matrix
+from catalog import catalog
 
 class SafeSequenceAccessor:
     def __init__(self, sequence):
@@ -72,23 +73,33 @@ def test():
 
 def main():
 
-    with open("oeis.pickle", "rb") as f:
+    filename = "oeis.pickle"
+    #filename = "oeis-10000.pickle"
+
+    with open(filename, "rb") as f:
         entries = pickle.load(f)
 
     term_definitions = [
-        lambda a, i: 1,
-        lambda a, i: i % 5
+        ("1"      , lambda a, i: 1       ),
+        ("i"      , lambda a, i: i        ),
+        ("i^2"    , lambda a, i: i**2       ),
+        ("i^3"    , lambda a, i: i**3       ),
+      # ("a[i-1]" , lambda a, i: a[i - 1])
     ]
 
     print("testing entries ...")
 
     for entry in entries:
+        if entry.oeis_id in catalog:
+            continue # skip known sequences
         if len(entry.values) < 10:
             continue
-        solution = solve_lineair_equation(entry.values, term_definitions)
+        solution = solve_lineair_equation(entry.values, [tf for (ts, tf) in term_definitions])
         if solution is not None:
-            print("{} offset {} length {} solution {} name {}".format(entry, entry.offset, len(entry.values), [float(x) for x in solution], entry.name))
-            print("    {}".format(entry.values[:10]))
+            print("{} offset = {}, length = {}, name = {}".format(entry, entry.offset, len(entry.values), entry.name))
+            print("        values = {}".format(entry.values[:15]))
+            print("        relation --> a[i] == {}".format(" + ".join("{} * {}".format(coefficient, ts) for ((ts, tf), coefficient) in zip(term_definitions, solution) if coefficient != 0)))
+
 if __name__ == "__main__":
     main()
 
