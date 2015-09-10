@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import numpy as np
 from fractions import Fraction
 
 def identity_matrix(n):

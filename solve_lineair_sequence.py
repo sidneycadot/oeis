@@ -2,56 +2,63 @@
 
 import numpy as np
 from fractions import Fraction
+from fractional_linear_algebra import inverse_matrix
 
-a = [0, 1]
-while len(a) < 20:
+class SafeSequenceAccessor:
+    def __init__(self, sequence):
+        self._sequence = sequence
+    def __getitem__(self, index):
+        if not (0 <= index < len(self._sequence)):
+            raise IndexError
+        return self._sequence[index]
+    def __len__(self):
+        return len(self._sequence)
+
+def solve_lineair_equation(sequence, term_definitions):
+
+    sequence = SafeSequenceAccessor(sequence)
+
+    equations_lhs = []
+    equations_rhs = []
+
+    for i in range(len(sequence)):
+        equation = []
+        try:
+            for term_definition in term_definitions:
+                value = Fraction(term_definition(sequence, i))
+                equation.append(value)
+        except:
+            pass
+        else:
+            equations_lhs.append(equation)
+            equations_rhs.append(Fraction(sequence[i]))
+
+    a = np.array(equations_lhs)
+    b = np.array(equations_rhs)
+
+    solution = inverse_matrix(a.T.dot(a)).dot(a.T).dot(b)
+
+    fit = a.dot(solution)
+    if np.any(fit != b):
+        return None
+
+    return solution
+
+
+a = []
+while len(a) < 30:
     i = len(a)
-    ai = 2 * a[i -2] ** 2 + a[i - 1] + i ** 2
+    ai = 100 + 10 * i
     a.append(ai)
 
-PREVIOUS_TERM_POWERS = [(-2, 2), (-2, 1), (-1, 2), (-1, 1)]
-INDEX_POWERS = [0, 1, 2]
+print(a)
 
-equations_lhs = []
-equations_rhs = []
+term_definitions = [
+    lambda a, i: a[i - 1],
+    lambda a, i: 1
+]
 
-for i in range(len(a)):
-    equation = []
-    for (shift, exponent) in PREVIOUS_TERM_POWERS:
-        ishift = i + shift
-        if not (0 <= ishift < len(a)):
-            break
-        e = a[ishift] ** exponent
-        try:
-            e = float(e)
-        except OverflowError:
-            break
-        equation.append(e)
+solution = solve_lineair_equation(a, term_definitions)
 
-    if len(equation) != len(PREVIOUS_TERM_POWERS):
-        print("cannot make equation for i = {}".format(i))
-        continue # we cannot synthesize this equation because we depend on values that are not available.
+print("solution:", solution)
 
-    for exponent in INDEX_POWERS:
-        equation.append(float(i ** exponent))
-
-    print("*** adding equation for a({}): {} == {}".format(i, equation, a[i]))
-
-    equations_lhs.append(equation)
-    equations_rhs.append(a[i])
-
-a = np.array(equations_lhs, dtype = np.float64)
-b = np.array(equations_rhs, dtype = np.float64)
-
-print(a.shape, a.dtype)
-print(b.shape, b.dtype)
-
-(x, residuals, rank, s) = np.linalg.lstsq(a, b)
-
-print("x", x)
-x = [Fraction(c).limit_denominator(10) for c in x]
-print("x", x)
-
-print("residuals", residuals)
-print("rank", rank)
-print("s", s)
