@@ -224,13 +224,15 @@ catalog = OrderedDict([
     ( 17655 , PolynomialSequence([1331, 4356, 4752, 1728])),
 
     ( 20705 , PolynomialSequence([4, 1])),
+
+    ( 20707 , PowerSequence(   4,       2, 0)),
+
     ( 20710 , PolynomialSequence([5, 1])),
     ( 20715 , PolynomialSequence([6, 1])),
     ( 20719 , PolynomialSequence([7, 1])),
     ( 20722 , PolynomialSequence([8, 1])),
     ( 20723 , PolynomialSequence([9, 1])),
 
-    ( 20707 , PowerSequence(   4,       2, 0)),
     ( 20714 , PowerSequence(   5,       2, 0)),
     ( 20729 , PowerSequence(   2,       5, 0)),
 
@@ -327,6 +329,11 @@ catalog = OrderedDict([
     ( 27692 , PolynomialSequence([7, 1, 1])),
     ( 27693 , PolynomialSequence([8, 1, 1])),
     ( 27694 , PolynomialSequence([9, 1, 1])),
+
+    ( 30100 , SkipSequence()),
+    ( 30700 , SkipSequence()),
+
+    ( 31500 , SkipSequence()),
 
     ( 33581 , PolynomialSequence([0, 0, 6])),
     ( 33582 , PolynomialSequence([0, 0, 7])),
@@ -498,10 +505,14 @@ def check_catalog():
 
     print("catalog has {} entries.".format(len(catalog)))
 
-    #prev = 0
-    #for z in catalog.keys():
-    #    print(z, z - prev)
-    #    prev = z
+    if True:
+        prev = 0
+        for z in catalog.keys():
+            skip = z - prev
+            print(z, skip)
+            if skip <= 0:
+                print("*************** OOPS ***************")
+            prev = z
 
 def main():
     check_catalog()
