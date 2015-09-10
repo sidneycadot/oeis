@@ -1,8 +1,9 @@
 #! /usr/bin/env python3
 
+import pickle
 import numpy as np
 from fractions import Fraction
-from fractional_linear_algebra import inverse_matrix
+from fraction_based_linear_algebra import inverse_matrix
 
 class SafeSequenceAccessor:
     def __init__(self, sequence):
@@ -33,10 +34,16 @@ def solve_lineair_equation(sequence, term_definitions):
             equations_lhs.append(equation)
             equations_rhs.append(Fraction(sequence[i]))
 
+    if len(equations_lhs) == 0:
+        return None
+
     a = np.array(equations_lhs)
     b = np.array(equations_rhs)
 
-    solution = inverse_matrix(a.T.dot(a)).dot(a.T).dot(b)
+    try:
+        solution = inverse_matrix(a.T.dot(a)).dot(a.T).dot(b)
+    except ValueError:
+        return None
 
     fit = a.dot(solution)
     if np.any(fit != b):
@@ -44,21 +51,44 @@ def solve_lineair_equation(sequence, term_definitions):
 
     return solution
 
+def test():
 
-a = []
-while len(a) < 30:
-    i = len(a)
-    ai = 100 + 10 * i
-    a.append(ai)
+    a = []
+    while len(a) < 30:
+        i = len(a)
+        ai = 100 + 10 * i
+        a.append(ai)
 
-print(a)
+    print(a)
 
-term_definitions = [
-    lambda a, i: a[i - 1],
-    lambda a, i: 1
-]
+    term_definitions = [
+        lambda a, i: a[i - 1],
+        lambda a, i: 1
+    ]
 
-solution = solve_lineair_equation(a, term_definitions)
+    solution = solve_lineair_equation(a, term_definitions)
 
-print("solution:", solution)
+    print("solution:", solution)
+
+def main():
+
+    with open("oeis.pickle", "rb") as f:
+        entries = pickle.load(f)
+
+    term_definitions = [
+        lambda a, i: 1,
+        lambda a, i: i % 5
+    ]
+
+    print("testing entries ...")
+
+    for entry in entries:
+        if len(entry.values) < 10:
+            continue
+        solution = solve_lineair_equation(entry.values, term_definitions)
+        if solution is not None:
+            print("{} offset {} length {} solution {} name {}".format(entry, entry.offset, len(entry.values), [float(x) for x in solution], entry.name))
+            print("    {}".format(entry.values[:10]))
+if __name__ == "__main__":
+    main()
 

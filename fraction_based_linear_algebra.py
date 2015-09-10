@@ -10,7 +10,7 @@ def identity_matrix(n):
 def inverse_matrix(X):
 
     if not ((len(X.shape) == 2) and (X.shape[0] == X.shape[1])):
-        raise RuntimeError("matrix is not square.")
+        raise RuntimeError("matrix is not square (shape = {}".format(X.shape))
 
     n = X.shape[0]
 
