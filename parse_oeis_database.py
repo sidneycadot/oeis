@@ -61,18 +61,14 @@ expected_directives = [
 
 expected_directive_order = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
 
-comment_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}" +
-                 "éçß’~Áäāăśőáöèéîíıńóôºüùñúàřžý ﬂ  —  ≤≥  ⇒ ≅ Ḡ ⊆ °⊗·«»…øï↑ëčաå′ 'č',β  £  'š', 'òаכלבו', 'в'," +
-                 " 'д', 'е', ä', 'š', ''Ç', \ufeff  'Ü'ť''и', 'л',  'ç', 'ö', 'ü', 'ı', 'ş'  'м', 'н', 'о', 'п', 'р'," +
-                 " 'с', 'т', 'у', 'ч', 'ш', 'ы', 'ь', 'я', '’ ±  '(', 'ć', 'ę', 'ś' ', 'č', 'ě', 'ř', 'š'')', 'ρ', 'ﬁ' " +
-                 "',', '~', '²', 'μ', 'σ', 'ᵣ', 'ᵤ', '𝒩'  σ 'ℕ','½', '𝒩' 'ᵣ',  'ᵣ', 'ᵤ', '∏' '∑'," +
-                 " '𝓁' 𝓁 𝓁 '∈' ⌈⌉ § ħ ² ł š  γ Χ ∩ ﬁ  ≠ ¢ ⊂ ∞× ωϱπτ ∫ ćõ  š ≈ “ ” ‘´ “” 八發 \u200b \u3000 \uf020  ]+$")
+comment_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~" +
+                            "¢£§«°±²´·º»½ÁÇ×ÜßàáäåçèéëíîïñòóôõöøùúüýāăćčęěħıłńőřśşšťžΧβγμπρστωϱавдеилмнопрстучшыьяաבוכלᵣᵤḠ\u200b—‘’“”…′ℕ↑⇒∈∏∑∞∩∫≅≈≠≤≥⊂⊆⊗⌈⌉\u3000八發\uf020ﬁﬂ\ufeff𝒩𝓁]+$")
 
-comment_patterns = [re.compile(pattern) for pattern in [
-            "[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}" +
-                 "éçß’~Áäāăśőáöèéîíıńóôºüùñúàřžý ﬂ  —  ≤≥  ⇒ ≅ Ḡ ⊆ °⊗·«»…øï↑ëčաå′ 'č',β  £  'š', 'òаכלבו', 'в', 'д', 'е', ä', 'š', ''Ç', \ufeff  'Ü'ť''и', 'л',  'ç', 'ö', 'ü', 'ı', 'ş'  'м', 'н', 'о', 'п', 'р', 'с', 'т', 'у', 'ч', 'ш', 'ы', 'ь', 'я', '’ ±  '(', 'ć', 'ę', 'ś' ', 'č', 'ě', 'ř', 'š'')', 'ρ', 'ﬁ' ',', '~', '²', 'μ', 'σ', 'ᵣ', 'ᵤ', '𝒩'  σ 'ℕ','½', '𝒩' 'ᵣ',  'ᵣ', 'ᵤ', '∏' '∑', '𝓁' 𝓁 𝓁 '∈' ⌈⌉ § ħ ² ł š  γ Χ ∩ ﬁ  ≠ ¢ ⊂ ∞× ωϱπτ ∫ ćõ  š ≈ “ ” ‘´ “” 八發 \u200b \u3000 \uf020  ]+$"
-        ]
-    ]
+detailed_reference_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~" +
+                                        "\x7f§«°±´¸»ÁÇÉÖ×ÚÜßàáäåçèéêëíîïñóôõöøùúüýăąćČčěłńőŒřŚŞşŠšũūżžǎ́Λλμπϕ\u2002\u2009\u200e‐—’“”…∞∪≡ﬀﬁ]+$")
+
+link_pattern = re.compile("[ !\"#$%&'()*+,\-./0-9:;<=>?@A-Z[\\\\\]^_`a-z{|}~" +
+                          "\x81£§©«®°±´µ·»ÁÂÃÅÆÉÕÖ×ÚÜßàáâäåçèéêëíîïñòóôõöøúûüýĀāăćČčěğĭıłńņňőœřśşŠšţūŽžΓΔΛΣΨαβγδζθπστφωϕНРСагдезийклнопрстхчыяאבגדוכלקרשתṭ\u200e—’“”…∏∑√∣≡⌊⌋ﬀﬁﬂ]+$")
 
 identification_patterns = [re.compile(pattern) for pattern in [
             "N[0-9]{4}$",
@@ -138,6 +134,8 @@ def nasty(s):
     nasties = ", ".join(["{!r}".format(c) for c in nasties])
     return nasties
 
+CHARDICT = {}
+
 def parse_oeis_content(oeis_id, content):
 
     # ========== check order of directives
@@ -159,14 +157,20 @@ def parse_oeis_content(oeis_id, content):
     lineT  = None
     lineU  = None
     lineN  = None
+    linesC = []
+    linesD = []
+    linesH = []
     lineK  = None
     lineO  = None
     linesA = []
-    linesC = []
 
     for line in lines:
 
         directive = line[:2]
+
+        if directive not in CHARDICT:
+            CHARDICT[directive] = set()
+        CHARDICT[directive] |= set(line[2:])
 
         assert directive in expected_directives
 
@@ -187,6 +191,10 @@ def parse_oeis_content(oeis_id, content):
             lineN = line
         elif directive == "%C":
             linesC.append(line) # multiple %C directives are allowed
+        elif directive == "%D":
+            linesD.append(line) # multiple %D directives are allowed
+        elif directive == "%H":
+            linesH.append(line) # multiple %H directives are allowed
         elif directive == "%K":
             assert lineK is None # only one %K directive is allowed
             lineK = line
@@ -255,6 +263,26 @@ def parse_oeis_content(oeis_id, content):
         if comment_pattern.match(comment) is None:
             logger.warning("[A{:06}] bad characters in %C directive: {!r}".format(oeis_id, lineC))
             print("nasty:", nasty(comment))
+            assert False
+
+    # ========== process D directive
+
+    for lineD in linesD:
+        assert lineD.startswith("%D ")
+        detailed_reference = lineD[3:]
+        if detailed_reference_pattern.match(detailed_reference) is None:
+            logger.warning("[A{:06}] bad characters in %D directive: {!r}".format(oeis_id, lineD))
+            print("nasty:", nasty(detailed_reference))
+            assert False
+
+    # ========== process H directive
+
+    for lineH in linesH:
+        assert lineH.startswith("%H ")
+        link = lineH[3:]
+        if link_pattern.match(link) is None:
+            logger.warning("[A{:06}] bad characters in %H directive: {!r}".format(oeis_id, lineH))
+            print("nasty:", nasty(link))
             assert False
 
     # ========== process A directive
@@ -350,3 +378,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    for k in sorted(CHARDICT.keys()):
+        print(repr(k), repr("".join(sorted(CHARDICT[k]))))
