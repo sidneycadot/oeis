@@ -60,7 +60,7 @@ def show_entries(dbconn):
     plt.plot(stability / 3600.0, age / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(336)
-    plt.hist(score, bins = 200, log = True)
+    plt.hist(score, bins = 200, log = True, range = (0, 2))
     plt.xlabel("score [-]")
 
     plt.subplot(338)
