@@ -24,7 +24,7 @@ Dependencies
 ------------
 
 - The code is written in Python 3.
-- Much of the code depends on the 'numpy' library.
+- Some scripts depends on the 'numpy' library.
 - Some scripts use the 'matplotlib' library to produce graphs.
 
 Description of files
