@@ -36,7 +36,7 @@ README.md                         |  Description of the project (this file).
 fetch_oeis_database.py            |  Python script to fetch and refresh data from the online OEIS to a local Sqlite3 database.
 show_database_time.py             |  Python script to visualize time stamps in a given SQLite3 OEIS database.
 parse_oeis_database.py            |  Python script to parse the SQLite3 version of the local OEIS database into a 'pickled' format.
-charmap.py                        |  Python module that defines lists of acceptable characters for the OEIS.
+charmap.py                        |  Python module that defines lists of acceptable characters for the OEIS directives.
 OeisEntry.py                      |  A simple class that contains (most of) the data of a single OEIS sequence.
 pickle_to_json.py                 |  Python script to generate a JSON version of the pickled database.
 fraction_based_linear_algebra.py  |  Code to perform matrix inversion without loss of precision using the Fraction type.
