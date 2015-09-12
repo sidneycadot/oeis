@@ -70,9 +70,18 @@ identification_patterns = [re.compile(pattern) for pattern in [
         ]
     ]
 
+# The expected keywords are documented in two places:
+#
+# https://oeis.org/eishelp1.html
+# https://oeis.org/eishelp2.html
+#
+# The second documentation is more elaborate. It documents the keywords "changed",
+# "hear", and "look", that the first page omits.
+
 expected_keywords = [
     "base",  # dependent on base used for sequence
     "bref",  # sequence is too short to do any analysis with
+    "changed",
     "cofr",  # a continued fraction expansion of a number
     "cons",  # a decimal expansion of a number
     "core",  # an important sequence
@@ -85,7 +94,9 @@ expected_keywords = [
     "frac",  # numerators or denominators of sequence of rationals
     "full",  # the full sequence is given
     "hard",  # next term not known, may be hard to find. Would someone please extend this sequence?
+    "hear",
     "less",  # reluctantly accepted
+    "look",
     "more",  # more terms are needed! would someone please extend this sequence?
     "mult",  # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
     "new",   # new (added within last two weeks, roughly)
@@ -99,10 +110,7 @@ expected_keywords = [
     "unkn",  # little is known; an unsolved problem; anyone who can find a formula or recurrence is urged to let me know.
     "walk",  # counts walks (or self-avoiding paths)
     "word",  # depends on words for the sequence in some language
-    # The following keywords occur often but are not documented:
-    "changed",
-    "look",
-    "hear",
+    # The following keyword occurs often but is not documented:
     "allocated"
 ]
 
@@ -290,6 +298,10 @@ def parse_oeis_content(oeis_id, content):
     # Canonify keywords: remove empty keywords and duplicates, and sort.
 
     keywords = sorted(set(k for k in keywords if k != ""))
+
+    if "full" in keywords and "fini" not in keywords:
+        logger.warning("[A{:06}] has keyword 'full', but not 'fini'")
+        sys.exit()
 
     # ========== return parsed values
 
