@@ -2,19 +2,23 @@
 
 import pickle
 
-print("reading data ...")
-with open("oeis.pickle", "rb") as f:
-    entries = pickle.load(f)
-print("done.")
+filename = "oeis.pickle"
 
-print("making candidate map ...")
+print("Reading data ...")
+with open(filename, "rb") as f:
+    oeis_entries = pickle.load(f)
+print("Done.")
+
+print("Making candidate map ...")
 candidate_map = {}
-for (entry_index, entry) in enumerate(entries):
-    for v in entry.values:
+for (entry_index, oeis_entry) in enumerate(oeis_entries):
+    for v in oeis_entry.values:
         if v not in candidate_map:
             candidate_map[v] = set()
         candidate_map[v].add(entry_index)
-print("done")
+print("Done")
+
+# A demo class to find
 
 class FibLike:
     def __init__(self, first, weights = None, offset = 0, num_values = 100):
@@ -28,6 +32,8 @@ class FibLike:
             values.append(v)
         self.values = values
 
+# Find it.
+
 fiblike = FibLike([1, 0], [1, 2], 1)
 print(fiblike.values)
 
@@ -38,7 +44,7 @@ search3 = min(v for v in fiblike.values if v > 100000)
 print([search1, search2, search3])
 
 for candidate_index in sorted(candidate_map[search1] & candidate_map[search2] & candidate_map[search3]):
-    entry = entries[candidate_index]
-    print(entry, entry.name)
-    print(entry.values)
+    oeis_entry = oeis_entries[candidate_index]
+    print(oeis_entry, oeis_entry.name)
+    print(oeis_entry.values)
     print
