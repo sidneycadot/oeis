@@ -23,9 +23,12 @@ instances. The pickled list of all OeisEntry instances can be read in its entire
 Dependencies
 ------------
 
-- The code is written in Python 3.
-- Some scripts depends on the 'numpy' library.
-- Some scripts use the 'matplotlib' library to produce graphs.
+- All code is written in Python 3.
+- Some code depends on the 'numpy' library:
+  - show_database_time.py
+  - solve_linear_sequence.py
+- Some code depends on the 'matplotlib' library:
+  - show_database_time.py
 
 Description of files
 --------------------
