@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+import re
 import time
 import sqlite3
 import urllib.request
@@ -7,38 +8,29 @@ import random
 import multiprocessing
 import logging
 
-from bs4 import BeautifulSoup, NavigableString
-
 logger = logging.getLogger(__name__)
 
 def oeis_internal_html_to_content(html):
-    """ Parse the OEIS html
-    """
-    soup = BeautifulSoup(html, 'html.parser')
+
+    # Parse the OEIS main sequence page html.
+    # We previously used BeautifulSoup4 for this, but using regular expressions
+    # works equally well, and it's one less dependency.
+
+    # The pattern uses non-greedy matching; we also allow newlines in the matched pattern.
+    tt_pattern = re.compile("<tt>%.*?</tt>", re.DOTALL)
+
+    tt_matches = tt_pattern.findall(html)
+
     content = []
 
-    for tt in soup.find_all("tt"):
-
-        content_line = tt.contents
-
-        if len(content_line) == 0:
-            # Empty 'tt' tags do occur; we discard them.
-            continue
-
-        assert len(content_line) == 1
-        content_line = content_line[0]
-
-        assert isinstance(content_line, NavigableString)
-        content_line = str(content_line)
-
-        assert content_line.endswith("\n")
-        content_line = content_line[:-1]
-
-        if content_line.startswith("%"):
-            content.append(content_line)
+    for tt in tt_matches:
+        assert tt.startswith("<tt>")
+        assert tt.endswith("</tt>")
+        tt = tt[4:-5]
+        tt = tt.strip()
+        content.append(tt)
 
     content = "\n".join(content)
-
     return content
 
 class FetchFailure:
@@ -50,40 +42,52 @@ class FetchFailure404(FetchFailure):
 
 class FetchSuccess:
     ok = True
-    def __init__(self, oeis_id, timestamp, content):
-        self.oeis_id   = oeis_id
-        self.timestamp = timestamp
-        self.content   = content
+    def __init__(self, oeis_id, timestamp, main_content, bfile_content):
+        self.oeis_id       = oeis_id
+        self.timestamp     = timestamp
+        self.main_content  = main_content
+        self.bfile_content = bfile_content
 
-def fetch_oeis_internal_entry(oeis_id):
+def fetch_oeis_internal_entry(oeis_id, fetch_bfile_flag = True):
 
     # We fetch the "internal" version of the OEIS entry,
     # which is easy to parse and documented.
 
-    url = "http://oeis.org/A{:06d}/internal".format(oeis_id)
+    main_url  = "http://oeis.org/A{oeis_id:06d}/internal".format(oeis_id = oeis_id)
+    bfile_url = "http://oeis.org/A{oeis_id:06d}/b{oeis_id:06d}.txt".format(oeis_id = oeis_id) if fetch_bfile_flag else None
+
+    urls = (main_url, bfile_url)
 
     timestamp = time.time()
 
-    # Try to fetch the page.
+    # Try to fetch the main page.
     # Any failure that leads to an exception leads to an abort.
 
-    try:
-        with urllib.request.urlopen(url) as response:
-            html = response.read()
-    except urllib.error.HTTPError as exception:
-        logger.error("Error while fetching '{}': {}".format(url, exception))
-        if exception.code == 404:
-            return FetchFailure404()
+    url_response_data = []
+    for url in urls:
+        if url is not None:
+            try:
+                with urllib.request.urlopen(url) as response:
+                    response_data = response.read().decode(response.headers.get_content_charset())
+            except urllib.error.HTTPError as exception:
+                logger.error("Error while fetching '{}': {}".format(url, exception))
+                if exception.code == 404:
+                    return FetchFailure404()
+                else:
+                    return FetchFailure()
+            except urllib.error.URLError as exception:
+                # Log the failure, and return None.
+                logger.error("Error while fetching '{}': {}".format(url, exception))
+                return FetchFailure()
         else:
-            return FetchFailure()
-    except urllib.error.URLError as exception:
-        # Log the failure, and return None.
-        logger.error("Error while fetching '{}': {}".format(url, exception))
-        return FetchFailure()
+            response_data = None
+        url_response_data.append(response_data)
 
-    content = oeis_internal_html_to_content(html)
+    (main_content, bfile_content) = url_response_data
 
-    return FetchSuccess(oeis_id, timestamp, content)
+    main_content = oeis_internal_html_to_content(main_content)
+
+    return FetchSuccess(oeis_id, timestamp, main_content, bfile_content)
 
 def find_highest_oeis_id():
 
@@ -96,7 +100,7 @@ def find_highest_oeis_id():
 
         logger.info("Highest OEIS range is ({}, {}), attempting to fetch entry # {} ...".format(OEIS_SUCCESS, OEIS_FAILURE, OEIS_ATTEMPT))
 
-        result = fetch_oeis_internal_entry(OEIS_ATTEMPT)
+        result = fetch_oeis_internal_entry(OEIS_ATTEMPT, fetch_bfile_flag = False)
 
         if result.ok: # success!
             OEIS_SUCCESS = OEIS_ATTEMPT
@@ -118,7 +122,8 @@ def setup_schema(dbconn):
                  oeis_id       INTEGER  PRIMARY KEY NOT NULL, -- OEIS ID number.
                  t_first_fetch REAL                 NOT NULL, -- earliest timestamp when the content below was first fetched.
                  t_most_recent REAL                 NOT NULL, -- most recent timestamp when the content below was fetched.
-                 content       TEXT                 NOT NULL  -- content (i.e., lines starting with '%' sign).
+                 main_content  TEXT                 NOT NULL, -- main content (i.e., lines starting with '%' sign).
+                 bfile_content TEXT                 NOT NULL  -- b-file content (secondary file containing sequence entries).
              );
              CREATE INDEX IF NOT EXISTS oeis_entries_index ON oeis_entries(oeis_id);
              """
@@ -130,8 +135,8 @@ def fetch_entries_into_database(dbconn, entries):
 
     assert isinstance(entries, set)
 
-    FETCH_BATCH_SIZE  = 500
-    NUM_PROCESSES     =  20
+    FETCH_BATCH_SIZE  = 200 # 500
+    NUM_PROCESSES     =  20 # 20
     SLEEP_AFTER_BATCH = 5.0 # [seconds]
 
     pool = multiprocessing.Pool(NUM_PROCESSES)
@@ -149,6 +154,8 @@ def fetch_entries_into_database(dbconn, entries):
 
             t1 = time.time()
             results = pool.map(fetch_oeis_internal_entry, random_entries_to_be_fetched)
+            #results = list(map(lambda entry : fetch_oeis_internal_entry(entry, fetch_bfile_flag = True), random_entries_to_be_fetched))
+
             t2 = time.time()
 
             duration = (t2 - t1)
@@ -170,24 +177,24 @@ def fetch_entries_into_database(dbconn, entries):
 
                 dbcursor = dbconn.cursor()
                 try:
-                    query = "SELECT content FROM oeis_entries WHERE oeis_id = ?;"
+                    query = "SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id = ?;"
                     dbcursor.execute(query, (result.oeis_id, ))
 
                     previous_content = dbcursor.fetchall()
 
                     assert len(previous_content) <= 1
-                    previous_content = None if len(previous_content) == 0 else previous_content[0][0]
+                    previous_content = None if len(previous_content) == 0 else previous_content[0]
 
                     if previous_content is None:
-                        # The oeis_id does not occur in the database, yet. We will insert it.
-                        query = "INSERT INTO oeis_entries(oeis_id, t_first_fetch, t_most_recent, content) VALUES (?, ?, ?, ?);"
-                        dbcursor.execute(query, (result.oeis_id, result.timestamp, result.timestamp, result.content))
+                        # The oeis_id does not occur in the database yet. We will insert it.
+                        query = "INSERT INTO oeis_entries(oeis_id, t_first_fetch, t_most_recent, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
+                        dbcursor.execute(query, (result.oeis_id, result.timestamp, result.timestamp, result.main_content, result.bfile_content))
                         countNewEntries += 1
-                    elif previous_content != result.content:
+                    elif previous_content != (result.main_content, result.bfile_content):
                         # The database content is stale.
                         # Update t_first_fetch, t_most_recent, and content.
-                        query = "UPDATE oeis_entries SET t_first_fetch = ?, t_most_recent = ?, content = ? WHERE oeis_id = ?;"
-                        dbcursor.execute(query, (result.timestamp, result.timestamp, result.content, result.oeis_id))
+                        query = "UPDATE oeis_entries SET t_first_fetch = ?, t_most_recent = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
+                        dbcursor.execute(query, (result.timestamp, result.timestamp, result.main_content, result.bfile_content, result.oeis_id))
                         countUpdatedEntries += 1
                     else:
                         # The database content is identical to the freshly fetched content.
