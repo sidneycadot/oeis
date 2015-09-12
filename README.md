@@ -31,15 +31,17 @@ Description of files
 --------------------
 
 filename                          |  description
-----------------------------------|------------------------------------------------------------------------------------------------
-README.md                         |  Description of the project (this file).
-fetch_oeis_database.py            |  Python script to fetch and refresh data from the online OEIS to a local Sqlite3 database.
-show_database_time.py             |  Python script to visualize time stamps in a given SQLite3 OEIS database.
-parse_oeis_database.py            |  Python script to parse the SQLite3 version of the local OEIS database into a 'pickled' format.
+----------------------------------|-------------------------------------------------------------------------------------------------------
+README.md                         |  Text file (markdown) description of the project (this file).
+----------------------------------|-------------------------------------------------------------------------------------------------------
+fetch_oeis_database.py            |  Python script to fetch and refresh data from the remote OEIS database to a local_sqlite3 database.
+show_database_time.py             |  Python script to visualize time stamps in a given local_sqlite OEIS database.
+parse_oeis_database.py            |  Python script to process the local_sqlite3 version of the OEIS database into a local_pickle.
+pickle_to_json.py                 |  Python script to process a local_pickle OEIS database to JSON.
+solve_linear_sequence.py          |  Python script that finds linear sequences in a local_pickle database.
+find_sequences.py                 |  Python script to probe a local_pickle OEIS database for a given sequence (work in progress).
+----------------------------------|-------------------------------------------------------------------------------------------------------
+fraction_based_linear_algebra.py  |  Python module to perform matrix inversion without loss of precision using the Fraction type.
 charmap.py                        |  Python module that defines lists of acceptable characters for the OEIS directives.
-OeisEntry.py                      |  A simple class that contains (most of) the data of a single OEIS sequence.
-pickle_to_json.py                 |  Python script to generate a JSON version of the pickled database.
-fraction_based_linear_algebra.py  |  Code to perform matrix inversion without loss of precision using the Fraction type.
-solve_linear_sequence.py          |  Probe local OEIS 'pickled' database.
-catalog.py                        |  My own catalog of vetted OEIS sequences.
-findsequences.py                  |  Probe local OEIS 'pickled' database for a given sequence (work in progress).
+OeisEntry.py                      |  Python module that defines a simple class that contains (most of) the data of a single OEIS sequence.
+catalog.py                        |  Python module containing vetted OEIS sequences.
