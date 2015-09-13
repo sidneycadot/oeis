@@ -35,8 +35,9 @@ def solve_lineair_equation(sequence, term_definitions):
                 value = Fraction(term_definition(sequence, i))
                 equation.append(value)
         except:
-             # we tried to read beyond the boundaries of the sequence.
-            break
+            # we tried to read beyond the boundaries of the sequence.
+            # Do not add this as an equation.
+            pass
         else:
             # we successfully added all values.
             equations_lhs.append(equation)
@@ -77,6 +78,7 @@ def main():
         #("i^2"    , lambda a, i: i**2       ),
         #("i^3"    , lambda a, i: i**3       ),
       # ("a[i-1]" , lambda a, i: a[i - 1])
+      # ("i*a[i-1]" , lambda a, i: Fraction(a[i-1], i + 1))
     ]
 
     print("testing OEIS entries ...")
@@ -96,4 +98,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

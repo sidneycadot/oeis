@@ -2,6 +2,8 @@
 
 # Code to analyze OEIS entries.
 
+import sys
+import os
 import sqlite3
 import collections
 import time
@@ -9,8 +11,9 @@ import logging
 import pickle
 import re
 
-from OeisEntry import OeisEntry
-from charmap import acceptable_characters, nasty
+from OeisEntry           import OeisEntry
+from charmap             import acceptable_characters
+from TimerContextManager import TimerContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +73,18 @@ identification_patterns = [re.compile(pattern) for pattern in [
         ]
     ]
 
+# The expected keywords are documented in two places:
+#
+# https://oeis.org/eishelp1.html
+# https://oeis.org/eishelp2.html
+#
+# The second page is more elaborate. It documents the keywords "changed",
+# "hear", and "look", that the first page omits.
+
 expected_keywords = [
     "base",  # dependent on base used for sequence
     "bref",  # sequence is too short to do any analysis with
+    "changed",
     "cofr",  # a continued fraction expansion of a number
     "cons",  # a decimal expansion of a number
     "core",  # an important sequence
@@ -85,7 +97,9 @@ expected_keywords = [
     "frac",  # numerators or denominators of sequence of rationals
     "full",  # the full sequence is given
     "hard",  # next term not known, may be hard to find. Would someone please extend this sequence?
+    "hear",
     "less",  # reluctantly accepted
+    "look",
     "more",  # more terms are needed! would someone please extend this sequence?
     "mult",  # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
     "new",   # new (added within last two weeks, roughly)
@@ -99,20 +113,59 @@ expected_keywords = [
     "unkn",  # little is known; an unsolved problem; anyone who can find a formula or recurrence is urged to let me know.
     "walk",  # counts walks (or self-avoiding paths)
     "word",  # depends on words for the sequence in some language
-    # The following keywords occur often but are not documented:
-    "changed",
-    "look",
-    "hear",
+    # The following keyword occurs often but is not documented:
     "allocated"
 ]
 
 expected_keywords_set = frozenset(expected_keywords)
 
-def parse_oeis_content(oeis_id, content):
+bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
+
+def parse_bfile_content(oeis_id, bfile_content):
+
+    lines = bfile_content.split("\n")
+
+    indexes = []
+    values = []
+
+    for (line_nr, line) in enumerate(lines, 1):
+
+        if line.startswith("#"):
+            continue
+
+        line = line.strip()
+
+        if len(line) == 0:
+            continue
+
+        match = bfile_line_pattern.match(line)
+
+        if match is None:
+            logger.error("[A{:06}] (line {}) b-file line cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
+            break
+
+        index = int(match.group(1))
+        value = int(match.group(2))
+
+        if len(indexes) > 0 and (index != indexes[-1] + 1):
+            logger.error("[A{:06}] (line {}) b-file has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
+            break
+
+        indexes.append(index)
+
+        values.append(value)
+
+    assert len(indexes) == len(values)
+
+    first_index = indexes[0] if len(indexes) > 0 else None
+
+    return (first_index, values)
+
+def parse_oeis_content(oeis_id, main_content, bfile_content):
 
     # ========== check order of directives
 
-    lines = content.split("\n")
+    lines = main_content.split("\n")
 
     for line in lines:
         assert len(line) >= 2
@@ -144,7 +197,7 @@ def parse_oeis_content(oeis_id, content):
         if directive in acceptable_characters:
             unacceptable_characters = set(line) - acceptable_characters[directive]
             if unacceptable_characters:
-                logger.warning("[A{:06}] unacceptable characters in directive {!r}: {}".format(oeis_id, line, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
+                logger.warning("[A{:06}] Unacceptable characters in directive {!r}: {}.".format(oeis_id, line, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
 
         if directive == "%I":
             assert line_I is None # only one %I directive is allowed
@@ -190,7 +243,7 @@ def parse_oeis_content(oeis_id, content):
             if identification_pattern.match(identification) is not None:
                 break
         else:
-            logger.warning("[A{:06}] ill-formatted %I directive: '{}'".format(oeis_id, line_I))
+            logger.warning("[A{:06}] Ill-formatted %I directive: '{}'.".format(oeis_id, line_I))
 
     # ========== process S/T/U directives
 
@@ -203,6 +256,10 @@ def parse_oeis_content(oeis_id, content):
 
     # Synthesize numbers
 
+    if line_S == "%S":
+        logger.warning("[A{:06}] Unusual line: '{}' (without space).".format(oeis_id, line_S))
+        line_S = "%S "
+
     assert (line_S is None) or line_S.startswith("%S ")
     assert (line_T is None) or line_T.startswith("%T ")
     assert (line_U is None) or line_U.startswith("%U ")
@@ -213,9 +270,9 @@ def parse_oeis_content(oeis_id, content):
 
     STU = S + T + U
 
-    values = [int(value_string) for value_string in STU.split(",") if len(value_string) > 0]
+    stu_values = [int(value_string) for value_string in STU.split(",") if len(value_string) > 0]
 
-    assert ",".join([str(n) for n in values]) == STU
+    assert ",".join([str(n) for n in stu_values]) == STU
 
     # ========== process N directive
 
@@ -247,12 +304,12 @@ def parse_oeis_content(oeis_id, content):
     # ========== process A directive
 
     if len(lines_A) == 0:
-        logger.warning("[A{:06}] missing %A directive".format(oeis_id))
+        logger.warning("[A{:06}] Missing %A directive.".format(oeis_id))
 
     # ========== process O directive
 
     if line_O is None:
-        logger.warning("[A{:06}] missing %O directive".format(oeis_id))
+        logger.warning("[A{:06}] Missing %O directive.".format(oeis_id))
         offset = () # empty tuple
     else:
         assert line_O.startswith("%O ")
@@ -260,8 +317,7 @@ def parse_oeis_content(oeis_id, content):
 
         offset = tuple(int(o) for o in offset.split(","))
         if len(offset) != 2:
-            logger.warning("[A{:06}] ill-formatted %O directive: {!r}".format(oeis_id, line_O))
-            pass
+            logger.warning("[A{:06}] Ill-formatted %O directive: {!r}.".format(oeis_id, line_O))
 
     # ========== process K directive
 
@@ -276,64 +332,125 @@ def parse_oeis_content(oeis_id, content):
 
     for unexpected_keyword in sorted(unexpected_keywords):
         if unexpected_keyword == "":
-            logger.warning("[A{:06}] unexpected empty keyword in %K directive: {!r}".format(oeis_id, line_K))
+            logger.warning("[A{:06}] Unexpected empty keyword in %K directive: {!r}.".format(oeis_id, line_K))
         else:
-            logger.warning("[A{:06}] unexpected keyword '{}' in %K directive: {!r}".format(oeis_id, unexpected_keyword, line_K))
+            logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive: {!r}.".format(oeis_id, unexpected_keyword, line_K))
 
     # Check for duplicate keywords
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] keyword '{}' occurs {} times in %K directive: {!r}".format(oeis_id, keyword, count, line_K))
+            logger.warning("[A{:06}] Keyword '{}' occurs {} times in %K directive: {!r}.".format(oeis_id, keyword, count, line_K))
 
     # Canonify keywords: remove empty keywords and duplicates, and sort.
 
     keywords = sorted(set(k for k in keywords if k != ""))
 
+    if "full" in keywords and "fini" not in keywords:
+        logger.warning("[A{:06}] Keyword 'full' without keyword 'fini'.")
+
+    # ========== process b-file, a file that lists (index, value) pairs, and merge it with the content obtained from the %S, %T, and %U lines.
+
+    (bfile_first_index, bfile_values) = parse_bfile_content(oeis_id, bfile_content)
+
+    if not len(bfile_values) >= len(stu_values):
+        logger.warning("[A{:06}] STU has more values than b-file (STU: {}, b-file: {}).".format(oeis_id, len(stu_values), len(bfile_values)))
+
+    if any(bfile_values[i] != stu_values[i] for i in range(min(len(stu_values), len(bfile_values)))):
+        logger.error("[A{:06}] STU/b-file values mismatch:".format(oeis_id))
+        logger.info("[A{:06}]   STU values ......... : {}...".format(oeis_id, stu_values[:10]))
+        logger.info("[A{:06}]   b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
+
+    values = bfile_values
+
+    if len(offset) > 0:
+        if offset[0] != bfile_first_index:
+            logger.error("[A{:06}] %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
+
+    indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
+    if len(indexes_where_magnitude_exceeds_1) > 0:
+        first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
+    else:
+        first_index_where_magnitude_exceeds_1 = 1
+
+    if len(offset) > 1:
+        # Find smallest index for which abs(value) > 1.
+        if offset[1] != first_index_where_magnitude_exceeds_1:
+            logger.error("[A{:06}] %O directive claims first index where magnitude exceeds 1 is {}, but b-file has {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
+
     # ========== return parsed values
 
     return OeisEntry(oeis_id, identification, values, name, offset, keywords)
 
-def main():
+def process_database(database_filename):
 
-    FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
-    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+    if not os.path.exists(database_filename):
+        logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename))
+        return
 
     # ========== fetch database entries, ordered by oeis_id.
 
-    database_filename = "oeis.sqlite3"
-
-    dbconn = sqlite3.connect(database_filename)
-    try:
-        dbcursor = dbconn.cursor()
-        try:
-            t1 = time.time()
-            dbcursor.execute("SELECT oeis_id, content FROM oeis_entries ORDER BY oeis_id")
-            oeis_data = dbcursor.fetchall()
-            t2 = time.time()
-            duration = (t2 - t1)
-        finally:
-            dbcursor.close()
-    finally:
-        dbconn.close()
-
-    logger.info("Full fetch from database: {} entries in {:.3f} seconds".format(len(oeis_data), duration))
-
-    # ========= parse database entries.
-
     entries = []
-    for (oeis_id, oeis_content) in oeis_data:
-        entry = parse_oeis_content(oeis_id, oeis_content)
-        entries.append(entry)
+
+    with TimerContextManager() as timer:
+        dbconn = sqlite3.connect(database_filename)
+        try:
+            dbcursor = dbconn.cursor()
+            try:
+                dbcursor.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries WHERE oeis_id > 250000 ORDER BY oeis_id;")
+                while True:
+                    oeis_entry = dbcursor.fetchone()
+                    if oeis_entry is None:
+                        break
+                    (oeis_id, main_content, bfile_content) = oeis_entry
+                    if oeis_id % 10 == 0:
+                        logger.info("Processing [A{:06}] ...".format(oeis_id))
+                    entry = parse_oeis_content(oeis_id, main_content, bfile_content)
+                    entries.append(entry)
+            finally:
+                dbcursor.close()
+        finally:
+            dbconn.close()
+        logger.info("Processed {} entries in {}.".format(len(entries), timer.duration_string()))
 
     # ========== write pickled versions.
 
-    with open("oeis.pickle", "wb") as f:
-        pickle.dump(entries, f)
+    (root, ext) = os.path.splitext(database_filename)
 
-    with open("oeis-10000.pickle", "wb") as f:
-        pickle.dump(entries[:10000], f)
+    with TimerContextManager() as timer:
+        filename_pickle = os.path.join(root + ".pickle")
+        with open(filename_pickle, "wb") as f:
+            pickle.dump(entries, f)
+        logger.info("Wrote all {} entries to '{}' in {}.".format(len(entries), filename_pickle, timer.duration_string()))
+
+    WRITE_REDUCED_THRESHOLD = 10000
+
+    if len(entries) > WRITE_REDUCED_THRESHOLD:
+        reduced_entries = entries[:WRITE_REDUCED_THRESHOLD]
+        with TimerContextManager() as timer:
+            filename_pickle_reduced = root + "-{}.pickle".format(len(reduced_entries))
+            with open(filename_pickle_reduced, "wb") as f:
+                pickle.dump(reduced_entries, f)
+            logger.info("Wrote first {} entries to '{}' in {}.".format(len(reduced_entries), filename_pickle_reduced, timer.duration_string()))
+
+def main():
+
+    if len(sys.argv) != 2:
+
+        print("Please specify the name of an OEIS database in Sqlite3 format.")
+
+    else:
+
+        database_filename = sys.argv[1]
+
+        FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
+        logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+
+        try:
+            process_database(database_filename)
+        finally:
+            logging.shutdown()
 
 if __name__ == "__main__":
     main()

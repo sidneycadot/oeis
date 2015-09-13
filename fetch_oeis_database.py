@@ -7,6 +7,7 @@ import urllib.request
 import random
 import multiprocessing
 import logging
+from   TimerContextManager import TimerContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -70,14 +71,14 @@ def fetch_oeis_internal_entry(oeis_id, fetch_bfile_flag = True):
                 with urllib.request.urlopen(url) as response:
                     response_data = response.read().decode(response.headers.get_content_charset())
             except urllib.error.HTTPError as exception:
-                logger.error("Error while fetching '{}': {}".format(url, exception))
+                logger.error("Error while fetching '{}': {}.".format(url, exception))
                 if exception.code == 404:
                     return FetchFailure404()
                 else:
                     return FetchFailure()
             except urllib.error.URLError as exception:
                 # Log the failure, and return None.
-                logger.error("Error while fetching '{}': {}".format(url, exception))
+                logger.error("Error while fetching '{}': {}.".format(url, exception))
                 return FetchFailure()
         else:
             response_data = None
@@ -239,12 +240,12 @@ def make_database_complete(dbconn, highest_oeis_id):
         dbcursor.close()
 
     entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
-    logger.info("Entries present in local database: {}".format(len(entries_in_local_database)))
+    logger.info("Entries present in local database: {}.".format(len(entries_in_local_database)))
 
     all_entries = set(range(1, highest_oeis_id + 1))
 
     missing_entries = set(all_entries) - entries_in_local_database
-    logger.info("Missing entries to be fetched: {}".format(len(missing_entries)))
+    logger.info("Missing entries to be fetched: {}.".format(len(missing_entries)))
 
     fetch_entries_into_database(dbconn, missing_entries)
 
@@ -262,7 +263,7 @@ def update_database_entries_randomly(dbconn, howmany):
     random_entries_count = min(howmany, len(all_entries))
     random_entries = set(random.sample(all_entries, random_entries_count))
 
-    logger.info("Random entries in local database selected for refresh: {}".format(len(random_entries)))
+    logger.info("Random entries in local database selected for refresh: {}.".format(len(random_entries)))
 
     fetch_entries_into_database(dbconn, random_entries)
 
@@ -279,21 +280,15 @@ def update_database_entries_by_score(dbconn, howmany):
         dbcursor.close()
 
     highest_score_entries = set(oeis_id for (oeis_id, ) in highest_score_entries)
-    logger.info("Highest-score entries in local database selected for refresh: {}".format(len(highest_score_entries)))
+    logger.info("Highest-score entries in local database selected for refresh: {}.".format(len(highest_score_entries)))
 
     fetch_entries_into_database(dbconn, highest_score_entries)
 
 def vacuum_database(dbconn):
-
-    logger.info("Initiating VACUUM on database ...")
-
-    t1 = time.time()
-    dbconn.execute("VACUUM;")
-    t2 = time.time()
-
-    duration = (t2 - t1)
-
-    logger.info("VACUUM done in {:.3f} seconds.".format(duration))
+    with TimerContextManager() as timer:
+        logger.info("Initiating VACUUM on database ...")
+        dbconn.execute("VACUUM;")
+        logger.info("VACUUM done in {}.".format(timer.duration_string())
 
 def main():
 
@@ -305,19 +300,27 @@ def main():
     try:
 
         while True:
-            dbconn = sqlite3.connect(database_filename)
-            try:
-                setup_schema(dbconn)
-                highest_oeis_id = find_highest_oeis_id()
-                make_database_complete(dbconn, highest_oeis_id)
-                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
-                vacuum_database(dbconn)
-            finally:
-                dbconn.close()
+
+            # Perform an update cycle.
+
+            with TimerContextManager() as timer:
+
+                dbconn = sqlite3.connect(database_filename)
+                try:
+                    setup_schema(dbconn)
+                    highest_oeis_id = find_highest_oeis_id()
+                    make_database_complete(dbconn, highest_oeis_id)
+                    update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
+                    update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
+                    vacuum_database(dbconn)
+                finally:
+                    dbconn.close()
+
+                logger.info("Full database update cycle took {}.".format(timer.duration_string())
+
+            # Pause between update cycles.
 
             PAUSE = max(300.0, random.gauss(1800.0, 600.0))
-
             logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
             time.sleep(PAUSE)
 

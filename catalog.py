@@ -1,12 +1,34 @@
 #! /usr/bin/env python3
 
-from collections import OrderedDict
+import sys
+from collections import OrderedDict, Counter
 import pickle
 
+class Sequence:
+    def __init__(self, first_index, last_index):
+        self._first_index = first_index
+        self._last_index  = last_index
+
+    @property
+    def first_index(self):
+        # The first index for which the sequence is defined.
+        return self._first_index
+
+    @property
+    def last_index(self):
+        # The last index for which the sequence is defined.
+        # For infinite sequences, this is None.
+        return self._last_index
+
 class SkipSequence:
-    pass
+    """ A sequence that we (temporarily) omit, because it turns up as a false positive.
+        for some family of sequences and interferes with the catalog-building work.
+    """
+    def __init__(self, reason):
+        self.reason = reason
 
 class PolynomialSequence:
+
     def __init__(self, coefficients):
         self.coefficients = coefficients
 
@@ -32,6 +54,18 @@ class PowerSequence:
 
     def __getitem__(self, index):
         return self.multiplier * self.base ** index + self.constant_offset
+
+    @property
+    def offset(self):
+        return (0, 2)
+
+class FiniteSequence:
+    def __init__(self, values):
+        self.values = values
+
+    def __getitem__(self, index):
+        assert 0 <= index < len(self.values)
+        return self.values[index]
 
     @property
     def offset(self):
@@ -71,40 +105,40 @@ catalog = OrderedDict([
 
     (  2066 , PowerSequence(  10,       4, 0)),
 
-    (  4766 , PolynomialSequence([5,  4])),
-    (  4767 , PolynomialSequence([3,  4])),
-    (  4768 , PolynomialSequence([9,  8])),
-    (  4769 , PolynomialSequence([11,  8])),
-    (  4770 , PolynomialSequence([5,  8])),
-    (  4771 , PolynomialSequence([7,  8])),
+    (  4766 , PolynomialSequence([5, 4])),
+    (  4767 , PolynomialSequence([3, 4])),
+    (  4768 , PolynomialSequence([9, 8])),
+    (  4769 , PolynomialSequence([11, 8])),
+    (  4770 , PolynomialSequence([5, 8])),
+    (  4771 , PolynomialSequence([7, 8])),
 
-    (  4924,  SkipSequence()),
-    (  4926,  SkipSequence()),
-    (  4928,  SkipSequence()),
-    (  4930,  SkipSequence()),
-    (  4932,  SkipSequence()),
-    (  4934,  SkipSequence()),
+    (  4924,  SkipSequence("unknown")),
+    (  4926,  SkipSequence("unknown")),
+    (  4928,  SkipSequence("unknown")),
+    (  4930,  SkipSequence("unknown")),
+    (  4932,  SkipSequence("unknown")),
+    (  4934,  SkipSequence("unknown")),
 
-    (  4944,  SkipSequence()),
-    (  4945,  SkipSequence()),
-    (  4946,  SkipSequence()),
-    (  4947,  SkipSequence()),
-    (  4948,  SkipSequence()),
-    (  4949,  SkipSequence()),
-    (  4950,  SkipSequence()),
-    (  4951,  SkipSequence()),
-    (  4952,  SkipSequence()),
-    (  4953,  SkipSequence()),
-    (  4954,  SkipSequence()),
-    (  4955,  SkipSequence()),
+    (  4944,  SkipSequence("unknown")),
+    (  4945,  SkipSequence("unknown")),
+    (  4946,  SkipSequence("unknown")),
+    (  4947,  SkipSequence("unknown")),
+    (  4948,  SkipSequence("unknown")),
+    (  4949,  SkipSequence("unknown")),
+    (  4950,  SkipSequence("unknown")),
+    (  4951,  SkipSequence("unknown")),
+    (  4952,  SkipSequence("unknown")),
+    (  4953,  SkipSequence("unknown")),
+    (  4954,  SkipSequence("unknown")),
+    (  4955,  SkipSequence("unknown")),
 
-    (  4963,  SkipSequence()),
-    (  4965,  SkipSequence()),
-    (  4967,  SkipSequence()),
-    (  4969,  SkipSequence()),
-    (  4971,  SkipSequence()),
-    (  4973,  SkipSequence()),
-    (  4975,  SkipSequence()),
+    (  4963,  SkipSequence("unknown")),
+    (  4965,  SkipSequence("unknown")),
+    (  4967,  SkipSequence("unknown")),
+    (  4969,  SkipSequence("unknown")),
+    (  4971,  SkipSequence("unknown")),
+    (  4973,  SkipSequence("unknown")),
+    (  4975,  SkipSequence("unknown")),
 
     (  5010 , PowerSequence(   9,       2, 0)),
     (  5015 , PowerSequence(  11,       2, 0)),
@@ -115,7 +149,7 @@ catalog = OrderedDict([
     (  5052 , PowerSequence(  10,       3, 0)),
     (  5055 , PowerSequence(   7,       5, 0)),
 
-    (  5408 , PolynomialSequence([1,  2])),
+    (  5408 , PolynomialSequence([1, 2])),
 
     (  5843 , PolynomialSequence([0, 2])),
 
@@ -123,7 +157,7 @@ catalog = OrderedDict([
 
     (  7531 , PolynomialSequence([0, 2, -3, 1])),
 
-    (  8553,  SkipSequence()),
+    (  8553,  SkipSequence("unknown")),
 
     (  8585 , PolynomialSequence([0,  3])),
     (  8586 , PolynomialSequence([0,  4])),
@@ -181,7 +215,7 @@ catalog = OrderedDict([
     (  9991 , PowerSequence(   1,      47, 0)),
     (  9992 , PowerSequence(   1,      48, 0)),
 
-    ( 10037 , SkipSequence()), # may be polynomial
+    ( 10037 , SkipSequence("unknown")), # may be polynomial? investigate.
 
     ( 10692 , PolynomialSequence([10])),
     ( 10701 , PolynomialSequence([3])),
@@ -313,10 +347,13 @@ catalog = OrderedDict([
     ( 20719 , PolynomialSequence([7, 1])),
     ( 20722 , PolynomialSequence([8, 1])),
     ( 20723 , PolynomialSequence([9, 1])),
+    ( 20725 , PolynomialSequence([2, 1])),
     ( 20729 , PowerSequence(   2,       5, 0)),
     ( 20735 , PolynomialSequence([5, 2])),
     ( 20739 , PolynomialSequence([6, 2])),
 
+    ( 20742 , SkipSequence("looks linear, Pisot")),
+    ( 20744 , SkipSequence("looks linear, Pisot")),
 
     ( 22958 , PolynomialSequence([2, -1])),
     ( 22959 , PolynomialSequence([3, -1])),
@@ -412,12 +449,16 @@ catalog = OrderedDict([
     ( 27693 , PolynomialSequence([8, 1, 1])),
     ( 27694 , PolynomialSequence([9, 1, 1])),
 
-    ( 30100 , SkipSequence()),
-    ( 30700 , SkipSequence()),
+    ( 30100 , SkipSequence("unknown")),
+    ( 30700 , SkipSequence("unknown")),
 
-    ( 31500 , SkipSequence()),
+    ( 31193 , SkipSequence("looks linear, examine")),
 
-    ( 32614 , SkipSequence()),
+    ( 31500 , SkipSequence("unknown")),
+
+    ( 32614 , SkipSequence("unknown")),
+
+    ( 33168 , SkipSequence("probably finite")),
 
     ( 33581 , PolynomialSequence([0, 0, 6])),
     ( 33582 , PolynomialSequence([0, 0, 7])),
@@ -440,13 +481,13 @@ catalog = OrderedDict([
 
     ( 44102 , PolynomialSequence([0, 36])),
 
-    ( 44138 , SkipSequence()),
-    ( 44179 , SkipSequence()),
-    ( 44187 , SkipSequence()),
-    ( 44242 , SkipSequence()),
-    ( 44251 , SkipSequence()),
-    ( 44322 , SkipSequence()),
-    ( 44421 , SkipSequence()),
+    ( 44138 , SkipSequence("unknown")),
+    ( 44179 , SkipSequence("unknown")),
+    ( 44187 , SkipSequence("unknown")),
+    ( 44242 , SkipSequence("unknown")),
+    ( 44251 , SkipSequence("unknown")),
+    ( 44322 , SkipSequence("unknown")),
+    ( 44421 , SkipSequence("unknown")),
 
     ( 48488 , PowerSequence(   6,       2, -5)),
     ( 48489 , PowerSequence(   7,       2, -6)),
@@ -457,13 +498,25 @@ catalog = OrderedDict([
 
     ( 52268 , PowerSequence(   9,      10, 0)),
 
-    ( 60747 , PolynomialSequence([-1, 2])),
+    ( 51062 , PolynomialSequence([8, 16])),
+
+    ( 53654 , PolynomialSequence([123456789, 123456789])),
+
+    ( 53741 , PolynomialSequence([20, 50])),
+    ( 53742 , PolynomialSequence([25, 50])),
+    ( 53743 , PolynomialSequence([45, 100])),
+
+    ( 59558 , SkipSequence("linear?")),
 
     ( 63941 , PowerSequence(  17,      39, 0)),
 
     ( 69984 , PolynomialSequence([1123, 21460])),
 
     ( 70189 , PolynomialSequence([0, 12345679])),
+
+    ( 73762 , PolynomialSequence([12, 24])),
+
+    ( 76338 , PolynomialSequence([1, 512])),
 
     ( 78787 , PolynomialSequence([1, 101])),
 
@@ -485,7 +538,7 @@ catalog = OrderedDict([
 
     ( 89357 , PowerSequence(   1,      64, 0)),
     ( 89683 , PowerSequence(  81,      81, 0)),
-    ( 96582 , SkipSequence()),
+    ( 96582 , SkipSequence("unknown")),
     ( 96884 , PowerSequence(   1,     101, 0)),
     ( 97659 , PowerSequence(   1,    1001, 0)),
 
@@ -504,7 +557,9 @@ catalog = OrderedDict([
     (102439 , PolynomialSequence([4, 100])),
 
     (103214 , PolynomialSequence([1, 24])),
-    (103303 , SkipSequence()),
+    (103303 , SkipSequence("unknown")),
+
+    (104661 , PolynomialSequence([2, 1])),
 
     (106839 , PolynomialSequence([11, 16])),
 
@@ -513,33 +568,41 @@ catalog = OrderedDict([
     (110287 , PowerSequence(  17,       2, 0)),
     (110288 , PowerSequence(  19,       2, 0)),
 
+    (112414 , PolynomialSequence([7, 3])),
+
     (116530 , PowerSequence(  20,       3, 0)),
 
-    (118759 , SkipSequence()),
-    (118760 , SkipSequence()),
+    (118759 , SkipSequence("unknown")),
+    (118760 , SkipSequence("unknown")),
 
     (119413 , PolynomialSequence([4, 16])),
 
     (120354 , PowerSequence(  11,       3, 0)),
 
-    (121377 , SkipSequence()),
-    (121378 , SkipSequence()),
+    (121377 , SkipSequence("unknown")),
+    (121378 , SkipSequence("unknown")),
 
     (124388 , PolynomialSequence([18, 27])),
 
+    (126978 , PolynomialSequence([9977, 104])),
+    (126979 , PolynomialSequence([233, 24])),
     (126980 , PolynomialSequence([47, 14])),
 
     (127547 , PolynomialSequence([4, 13])),
 
+    (128468 , PolynomialSequence([17, 30])),
+
     (128470 , PolynomialSequence([1, 30])),
     (128471 , PolynomialSequence([7, 30])),
 
-    (130764, SkipSequence()),
-    (130765, SkipSequence()),
+    (130764, SkipSequence("unknown")),
+    (130765, SkipSequence("unknown")),
 
     (131877 , PolynomialSequence([1, 14])),
 
     (133752 , PowerSequence(   1,     256, 0)),
+
+    (134297 , PolynomialSequence([107, 107])),
 
     (134960 , PolynomialSequence([0, 453060])),
 
@@ -553,7 +616,7 @@ catalog = OrderedDict([
 
     (135659 , PolynomialSequence([7, 24])),
 
-    (136602 , SkipSequence()),
+    (136602 , SkipSequence("unknown")),
 
     (138127 , PolynomialSequence([0, 127])),
     (138128 , PowerSequence(   1,     127, 0)),
@@ -564,6 +627,7 @@ catalog = OrderedDict([
     (139222 , PolynomialSequence([3, 30])),
 
     (139245 , PolynomialSequence([4, 20])),
+    (139249 , PolynomialSequence([6, 30])),
 
     (139264 , PolynomialSequence([7, 70])),
     (139279 , PolynomialSequence([8, 40])),
@@ -587,38 +651,66 @@ catalog = OrderedDict([
 
     (140300 , PowerSequence(   1,    1024, 0)),
 
+    (140801 , PolynomialSequence([360, 720])),
+
     (142241 , PolynomialSequence([14, 24])),
 
     (144396 , PolynomialSequence([3, 2])),
+
+    (144619 , PolynomialSequence([8, 19])),
 
     (147587 , PolynomialSequence([7, 14])),
 
     (152691 , PolynomialSequence([0, 64])),
 
+    (153080 , PolynomialSequence([2, 13])),
+
+    (153814 , PolynomialSequence([1001, 1001])),
+
     (153893 , PowerSequence(   3,    2, -1)),
     (153894 , PowerSequence(   5,    2, -1)),
     (153972 , PowerSequence(   1,    2, +6)),
 
+    (154266 , PolynomialSequence([12, 27])),
+    (154267 , PolynomialSequence([15, 27])),
+
+    (154519 , PolynomialSequence([228, 216])),
+    (154549 , PolynomialSequence([111111, 111111])),
 
     (155477 , PowerSequence(  43,    1849, 0)),
 
+    (156795 , PolynomialSequence([22, 81])),
+
+    (157105 , PolynomialSequence([106846, 137842])),
+
+    (158000 , PolynomialSequence([339, 338])),
+    (158060 , PolynomialSequence([26, 25])),
+    (158071 , PolynomialSequence([65, 64])),
+
+    (158130 , PolynomialSequence([120, 121])),
+    (158131 , PolynomialSequence([122, 121])),
+    (158133 , PolynomialSequence([145, 144])),
+    (158136 , PolynomialSequence([143, 144])),
     (158253 , PolynomialSequence([288, 289])),
     (158255 , PolynomialSequence([290, 289])),
     (158313 , PolynomialSequence([401, 400])),
 
     (158386 , PolynomialSequence([677, 676])),
     (158393 , PolynomialSequence([675, 676])),
+    (158399 , PolynomialSequence([783, 784])),
+    (158409 , PolynomialSequence([899, 900])),
+    (158412 , PolynomialSequence([960, 961])),
+    (158414 , PolynomialSequence([962, 961])),
     (158421 , PolynomialSequence([1023, 1024])),
 
     (159551 , PolynomialSequence([10, 101])),
-
-
 
     (159991 , PowerSequence(   1,      60, 0)),
 
 
     (161705 , PolynomialSequence([1, 18])),
     (161709 , PolynomialSequence([1, 22])),
+    (161714 , PolynomialSequence([1, 28])),
 
     (164284 , PolynomialSequence([8, 15])),
 
@@ -626,9 +718,11 @@ catalog = OrderedDict([
 
     (165747 , PolynomialSequence([1, -2])),
 
-    (168650 , SkipSequence()),
-    (168651 , SkipSequence()),
-    (168652 , SkipSequence()),
+    (166731 , SkipSequence("english")),
+
+    (168650 , SkipSequence("unknown")),
+    (168651 , SkipSequence("unknown")),
+    (168652 , SkipSequence("unknown")),
 
     (169604 , PowerSequence(   3,       6, 0)),
     (169634 , PowerSequence(   3,       7, 0)),
@@ -639,6 +733,8 @@ catalog = OrderedDict([
     (170955 , PowerSequence(  10,      10, -9)),
 
     (172178 , PolynomialSequence([1, 99])),
+
+    (172525 , PolynomialSequence([111111111, 111111111])),
 
     (174312 , PolynomialSequence([0, 32])),
     (175558 , PowerSequence(   1,     167, 0)),
@@ -662,10 +758,12 @@ catalog = OrderedDict([
     (195819 , PolynomialSequence([0, 29])),
     (200860 , PolynomialSequence([0, 682])),
 
+    (204189 , SkipSequence("finite")),
+
     (209876 , PolynomialSequence([30, 36])),
 
-    (213182 , SkipSequence()),
-    (213184 , SkipSequence()),
+    (213182 , SkipSequence("unknown")),
+    (213184 , SkipSequence("unknown")),
 
     (215137 , PolynomialSequence([1, 17])),
     (215144 , PolynomialSequence([1, 19])),
@@ -682,7 +780,7 @@ catalog = OrderedDict([
 
     (238477 , PolynomialSequence([5, 32])),
 
-    (242181 , SkipSequence()),
+    (242181 , SkipSequence("unknown")),
     (242215 , PolynomialSequence([5, 18])),
 
     (242570 , PolynomialSequence([0, 252])),
@@ -697,23 +795,46 @@ catalog = OrderedDict([
 
     (256958 , PolynomialSequence([-50, 1])),
 
-    (258070 , SkipSequence()),
-    (258071 , SkipSequence()),
+    (258070 , SkipSequence("unknown")),
+    (258071 , SkipSequence("unknown")),
     (258597 , PowerSequence(  13,       3, 0)),
     (258598 , PowerSequence(  17,       3, 0)),
     (259076 , PowerSequence(   1,      80, 0)),
 
+    (260751 , SkipSequence("finite")),
+
+    (261150 , PolynomialSequence([403185216600637, 2124513401010])),
     (261151 , PolynomialSequence([11410337850553, 460909869420])),
     (261152 , PolynomialSequence([161004359399459161, 10644900609172830]))
 ])
 
 def check_catalog():
 
+    # Verify that the keys in the catalog are increasing:
+    bad_order_found = False
+    catalog_keys = list(catalog.keys())
+    for i in range(len(catalog_keys) - 1):
+        if not(catalog_keys[i] < catalog_keys[i + 1]):
+            print("bad catalog key order: {}, {}".format(catalog_keys[i], catalog_keys[i + 1]))
+            bad_order_found = True
+
+    if bad_order_found:
+        print("catalog bad, please fix.")
+        sys.exit()
+
     filename = "oeis.pickle"
     #filename = "oeis-10000.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
+
+    if False:
+        keyword_counter = Counter()
+        for oeis_entry in oeis_entries:
+            for keyword in oeis_entry.keywords:
+                keyword_counter[keyword] += 1
+        print(keyword_counter)
+        sys.exit()
 
     for (oeis_id, catalog_entry) in catalog.items():
         oeis_entry = oeis_entries[oeis_id - 1]
@@ -736,15 +857,6 @@ def check_catalog():
             print("[A{:06d}] VALUE COMPARISON FAILED: oeis says {}, catalog says {}".format(oeis_id, oeis_entry.values, catalog_values))
 
     print("catalog has {} entries.".format(len(catalog)))
-
-    if True:
-        prev = 0
-        for z in catalog.keys():
-            skip = z - prev
-            print(z, skip)
-            if skip <= 0:
-                print("*************** NEGATIVE SKIP ***************")
-            prev = z
 
 def main():
     check_catalog()
