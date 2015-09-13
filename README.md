@@ -46,3 +46,4 @@ fraction_based_linear_algebra.py  |  Python module to perform matrix inversion w
 charmap.py                        |  Python module that defines lists of acceptable characters for the OEIS directives.
 OeisEntry.py                      |  Python module that defines a simple class that contains (most of) the data of a single OEIS sequence.
 catalog.py                        |  Python module containing vetted OEIS sequences.
+TimerContextManager.py            |  Python module that simplifies timing lengthy operations using a context manager.
