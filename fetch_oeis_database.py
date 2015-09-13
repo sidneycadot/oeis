@@ -7,6 +7,7 @@ import urllib.request
 import random
 import multiprocessing
 import logging
+from   TimerContextManager import TimerContextManager
 
 logger = logging.getLogger(__name__)
 
@@ -284,16 +285,10 @@ def update_database_entries_by_score(dbconn, howmany):
     fetch_entries_into_database(dbconn, highest_score_entries)
 
 def vacuum_database(dbconn):
-
-    logger.info("Initiating VACUUM on database ...")
-
-    t1 = time.time()
-    dbconn.execute("VACUUM;")
-    t2 = time.time()
-
-    duration = (t2 - t1)
-
-    logger.info("VACUUM done in {:.3f} seconds.".format(duration))
+    with TimerContextManager() as timer:
+        logger.info("Initiating VACUUM on database ...")
+        dbconn.execute("VACUUM;")
+        logger.info("VACUUM done in {}.".format(timer.duration_string())
 
 def main():
 
@@ -305,19 +300,27 @@ def main():
     try:
 
         while True:
-            dbconn = sqlite3.connect(database_filename)
-            try:
-                setup_schema(dbconn)
-                highest_oeis_id = find_highest_oeis_id()
-                make_database_complete(dbconn, highest_oeis_id)
-                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
-                vacuum_database(dbconn)
-            finally:
-                dbconn.close()
+
+            # Perform an update cycle.
+
+            with TimerContextManager() as timer:
+
+                dbconn = sqlite3.connect(database_filename)
+                try:
+                    setup_schema(dbconn)
+                    highest_oeis_id = find_highest_oeis_id()
+                    make_database_complete(dbconn, highest_oeis_id)
+                    update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
+                    update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
+                    vacuum_database(dbconn)
+                finally:
+                    dbconn.close()
+
+                logger.info("Full database update cycle took {}.".format(timer.duration_string())
+
+            # Pause between update cycles.
 
             PAUSE = max(300.0, random.gauss(1800.0, 600.0))
-
             logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
             time.sleep(PAUSE)
 
