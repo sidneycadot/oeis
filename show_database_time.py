@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 
+import os
+import sys
 import time
 import logging
 import sqlite3
@@ -8,17 +10,25 @@ from matplotlib import pyplot as plt
 
 logger = logging.getLogger(__name__)
 
-def show_entries(dbconn):
+def show_entries(database_filename):
+
+    if not os.path.exists(database_filename):
+        logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename))
+        return
 
     t_current = time.time()
 
-    dbcursor = dbconn.cursor()
+    dbconn = sqlite3.connect(database_filename)
     try:
-        query = "SELECT oeis_id, t_first_fetch, t_most_recent FROM oeis_entries;"
-        dbcursor.execute(query)
-        data = dbcursor.fetchall()
+        dbcursor = dbconn.cursor()
+        try:
+            query = "SELECT oeis_id, t_first_fetch, t_most_recent FROM oeis_entries;"
+            dbcursor.execute(query)
+            data = dbcursor.fetchall()
+        finally:
+            dbcursor.close()
     finally:
-        dbcursor.close()
+        dbconn.close()
 
     dt = np.dtype([
             ("oeis_id", np.int),
@@ -29,7 +39,7 @@ def show_entries(dbconn):
 
     data = np.array(data, dtype = dt)
 
-    print(data.shape, data.dtype)
+    # print(data.shape, data.dtype)
 
     t1      = data["t1"]
     t2      = data["t2"]
@@ -60,9 +70,10 @@ def show_entries(dbconn):
     plt.plot(stability / 3600.0, age / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(336)
-    MAXRANGE = 1.0
-    plt.hist(score, bins = 200, log = True, range = (0, 1.0))
-    plt.xlabel("score [-] ({} entries > {})".format(np.sum(score > MAXRANGE), MAXRANGE))
+    bins = np.logspace(-4.0, +2.0, 200)
+    plt.hist(np.log10(score), bins = bins, log = True)
+    plt.xscale("log")
+    plt.xlabel("score")
 
     plt.subplot(338)
     plt.hist(stability / 3600.0, bins = 200, log = True)
@@ -72,18 +83,19 @@ def show_entries(dbconn):
 
 def main():
 
-    FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
+    if len(sys.argv) != 2:
+        print("Please specify the name of an OEIS database in Sqlite3 format.")
+        return
+
+    database_filename = sys.argv[1]
+
+    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-    database_filename = "oeis.sqlite3"
-
-    dbconn = sqlite3.connect(database_filename)
     try:
-        show_entries(dbconn)
+        show_entries(database_filename)
     finally:
-        dbconn.close()
-
-    logging.shutdown()
+        logging.shutdown()
 
 if __name__ == "__main__":
     main()
