@@ -288,11 +288,11 @@ def vacuum_database(dbconn):
     with TimerContextManager() as timer:
         logger.info("Initiating VACUUM on database ...")
         dbconn.execute("VACUUM;")
-        logger.info("VACUUM done in {}.".format(timer.duration_string())
+        logger.info("VACUUM done in {}.".format(timer.duration_string()))
 
 def main():
 
-    FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
+    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
     database_filename = "oeis.sqlite3"
@@ -316,7 +316,7 @@ def main():
                 finally:
                     dbconn.close()
 
-                logger.info("Full database update cycle took {}.".format(timer.duration_string())
+                logger.info("Full database update cycle took {}.".format(timer.duration_string()))
 
             # Pause between update cycles.
 
