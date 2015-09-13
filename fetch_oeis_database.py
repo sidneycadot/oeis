@@ -70,14 +70,14 @@ def fetch_oeis_internal_entry(oeis_id, fetch_bfile_flag = True):
                 with urllib.request.urlopen(url) as response:
                     response_data = response.read().decode(response.headers.get_content_charset())
             except urllib.error.HTTPError as exception:
-                logger.error("Error while fetching '{}': {}".format(url, exception))
+                logger.error("Error while fetching '{}': {}.".format(url, exception))
                 if exception.code == 404:
                     return FetchFailure404()
                 else:
                     return FetchFailure()
             except urllib.error.URLError as exception:
                 # Log the failure, and return None.
-                logger.error("Error while fetching '{}': {}".format(url, exception))
+                logger.error("Error while fetching '{}': {}.".format(url, exception))
                 return FetchFailure()
         else:
             response_data = None
@@ -239,12 +239,12 @@ def make_database_complete(dbconn, highest_oeis_id):
         dbcursor.close()
 
     entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
-    logger.info("Entries present in local database: {}".format(len(entries_in_local_database)))
+    logger.info("Entries present in local database: {}.".format(len(entries_in_local_database)))
 
     all_entries = set(range(1, highest_oeis_id + 1))
 
     missing_entries = set(all_entries) - entries_in_local_database
-    logger.info("Missing entries to be fetched: {}".format(len(missing_entries)))
+    logger.info("Missing entries to be fetched: {}.".format(len(missing_entries)))
 
     fetch_entries_into_database(dbconn, missing_entries)
 
@@ -262,7 +262,7 @@ def update_database_entries_randomly(dbconn, howmany):
     random_entries_count = min(howmany, len(all_entries))
     random_entries = set(random.sample(all_entries, random_entries_count))
 
-    logger.info("Random entries in local database selected for refresh: {}".format(len(random_entries)))
+    logger.info("Random entries in local database selected for refresh: {}.".format(len(random_entries)))
 
     fetch_entries_into_database(dbconn, random_entries)
 
@@ -279,7 +279,7 @@ def update_database_entries_by_score(dbconn, howmany):
         dbcursor.close()
 
     highest_score_entries = set(oeis_id for (oeis_id, ) in highest_score_entries)
-    logger.info("Highest-score entries in local database selected for refresh: {}".format(len(highest_score_entries)))
+    logger.info("Highest-score entries in local database selected for refresh: {}.".format(len(highest_score_entries)))
 
     fetch_entries_into_database(dbconn, highest_score_entries)
 
