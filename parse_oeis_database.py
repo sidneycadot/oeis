@@ -141,14 +141,14 @@ def parse_bfile_content(oeis_id, bfile_content):
         match = bfile_line_pattern.match(line)
 
         if match is None:
-            logger.error("[A{:06}] (line {}) b-file line cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
+            logger.error("[A{:06}] b-file line {} cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
             break
 
         index = int(match.group(1))
         value = int(match.group(2))
 
         if len(indexes) > 0 and (index != indexes[-1] + 1):
-            logger.error("[A{:06}] (line {}) b-file has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
+            logger.error("[A{:06}] b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
             break
 
         indexes.append(index)
@@ -357,15 +357,17 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
     if not len(bfile_values) >= len(stu_values):
         logger.warning("[A{:06}] STU has more values than b-file (STU: {}, b-file: {}).".format(oeis_id, len(stu_values), len(bfile_values)))
 
-    if any(bfile_values[i] != stu_values[i] for i in range(min(len(stu_values), len(bfile_values)))):
+    if all(bfile_values[i] == stu_values[i] for i in range(min(len(stu_values), len(bfile_values)))):
+        # The values are fully consistent. Use the longest available "values" array.
+        values = bfile_values if len(bfile_values) > len(stu_values) else stu_values
+    else:
         logger.error("[A{:06}] STU/b-file values mismatch:".format(oeis_id))
         logger.info("[A{:06}]   STU values ......... : {}...".format(oeis_id, stu_values[:10]))
         logger.info("[A{:06}]   b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
 
-    values = bfile_values
+        values = stu_values # safe choice
 
-    if len(offset) > 0:
-        if offset[0] != bfile_first_index:
+    if (len(offset) > 0) and (offset[0] != bfile_first_index):
             logger.error("[A{:06}] %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
 
     indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
@@ -374,10 +376,8 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
     else:
         first_index_where_magnitude_exceeds_1 = 1
 
-    if len(offset) > 1:
-        # Find smallest index for which abs(value) > 1.
-        if offset[1] != first_index_where_magnitude_exceeds_1:
-            logger.error("[A{:06}] %O directive claims first index where magnitude exceeds 1 is {}, but b-file has {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
+    if len(offset) > 1 and (offset[1] != first_index_where_magnitude_exceeds_1):
+        logger.error("[A{:06}] %O directive claims first index where magnitude exceeds 1 is {}, but b-file has {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
 
     # ========== return parsed values
 
@@ -398,14 +398,14 @@ def process_database(database_filename):
         try:
             dbcursor = dbconn.cursor()
             try:
-                dbcursor.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries WHERE oeis_id > 250000 ORDER BY oeis_id;")
+                dbcursor.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
                 while True:
                     oeis_entry = dbcursor.fetchone()
                     if oeis_entry is None:
                         break
                     (oeis_id, main_content, bfile_content) = oeis_entry
                     if oeis_id % 10 == 0:
-                        logger.info("Processing [A{:06}] ...".format(oeis_id))
+                        logger.log(logging.INFO - 5, "Processing [A{:06}] ...".format(oeis_id))
                     entry = parse_oeis_content(oeis_id, main_content, bfile_content)
                     entries.append(entry)
             finally:
@@ -444,7 +444,8 @@ def main():
 
         database_filename = sys.argv[1]
 
-        FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
+        logging.addLevelName(logging.DEBUG + 5, "PROGRESS")
+        FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
         logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
         try:
