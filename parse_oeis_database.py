@@ -437,21 +437,19 @@ def process_database(database_filename):
 def main():
 
     if len(sys.argv) != 2:
-
         print("Please specify the name of an OEIS database in Sqlite3 format.")
+        return
 
-    else:
+    database_filename = sys.argv[1]
 
-        database_filename = sys.argv[1]
+    logging.addLevelName(logging.DEBUG + 5, "PROGRESS")
+    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
+    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-        logging.addLevelName(logging.DEBUG + 5, "PROGRESS")
-        FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
-        logging.basicConfig(format = FORMAT, level = logging.DEBUG)
-
-        try:
-            process_database(database_filename)
-        finally:
-            logging.shutdown()
+    try:
+        process_database(database_filename)
+    finally:
+        logging.shutdown()
 
 if __name__ == "__main__":
     main()
