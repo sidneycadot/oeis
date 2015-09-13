@@ -365,7 +365,7 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
         logger.info("[A{:06}]   STU values ......... : {}...".format(oeis_id, stu_values[:10]))
         logger.info("[A{:06}]   b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
 
-        values = stu_values # safe choice
+        values = stu_values  # safe choice
 
     if (len(offset) > 0) and (offset[0] != bfile_first_index):
             logger.error("[A{:06}] %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
@@ -412,6 +412,7 @@ def process_database(database_filename):
                 dbcursor.close()
         finally:
             dbconn.close()
+
         logger.info("Processed {} entries in {}.".format(len(entries), timer.duration_string()))
 
     # ========== write pickled versions.
@@ -432,6 +433,7 @@ def process_database(database_filename):
             filename_pickle_reduced = root + "-{}.pickle".format(len(reduced_entries))
             with open(filename_pickle_reduced, "wb") as f:
                 pickle.dump(reduced_entries, f)
+
             logger.info("Wrote first {} entries to '{}' in {}.".format(len(reduced_entries), filename_pickle_reduced, timer.duration_string()))
 
 def main():
@@ -443,7 +445,7 @@ def main():
     database_filename = sys.argv[1]
 
     logging.addLevelName(logging.DEBUG + 5, "PROGRESS")
-    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
+    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(lineno)-3d |%(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
     try:
