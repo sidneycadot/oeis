@@ -2,6 +2,8 @@
 
 # Code to analyze OEIS entries.
 
+import sys
+import os
 import sqlite3
 import collections
 import time
@@ -381,14 +383,14 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
 
     return OeisEntry(oeis_id, identification, values, name, offset, keywords)
 
-def main():
+def process_database(database_filename):
 
-    FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
-    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+    if not os.path.exists(database_filename):
+        logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename))
+        return
 
     # ========== fetch database entries, ordered by oeis_id.
 
-    database_filename = "oeis_with_bfile.sqlite3"
     entries = []
 
     with TimerContextManager() as timer:
@@ -396,7 +398,7 @@ def main():
         try:
             dbcursor = dbconn.cursor()
             try:
-                dbcursor.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
+                dbcursor.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries WHERE oeis_id > 250000 ORDER BY oeis_id;")
                 while True:
                     oeis_entry = dbcursor.fetchone()
                     if oeis_entry is None:
@@ -414,8 +416,10 @@ def main():
 
     # ========== write pickled versions.
 
+    (root, ext) = os.path.splitext(database_filename)
+
     with TimerContextManager() as timer:
-        filename_pickle = "oeis.pickle"
+        filename_pickle = os.path.join(root + ".pickle")
         with open(filename_pickle, "wb") as f:
             pickle.dump(entries, f)
         logger.info("Wrote all {} entries to '{}' in {}.".format(len(entries), filename_pickle, timer.duration_string()))
@@ -425,10 +429,28 @@ def main():
     if len(entries) > WRITE_REDUCED_THRESHOLD:
         reduced_entries = entries[:WRITE_REDUCED_THRESHOLD]
         with TimerContextManager() as timer:
-            filename_pickle_reduced = "oeis-{}.pickle".format(len(reduced_entries))
+            filename_pickle_reduced = root + "-{}.pickle".format(len(reduced_entries))
             with open(filename_pickle_reduced, "wb") as f:
                 pickle.dump(reduced_entries, f)
             logger.info("Wrote first {} entries to '{}' in {}.".format(len(reduced_entries), filename_pickle_reduced, timer.duration_string()))
+
+def main():
+
+    if len(sys.argv) != 2:
+
+        print("Please specify the name of an OEIS database in Sqlite3 format.")
+
+    else:
+
+        database_filename = sys.argv[1]
+
+        FORMAT = "%(asctime)-15s | %(levelname)-10s | %(message)s"
+        logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+
+        try:
+            process_database(database_filename)
+        finally:
+            logging.shutdown()
 
 if __name__ == "__main__":
     main()
