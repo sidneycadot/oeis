@@ -253,7 +253,7 @@ def main():
 
         for (oeis_entry, solution) in pool.imap(find_solution, work):
             if solution is not None:
-                print(oeis_entry, len(oeis_entry.values), solution)
+                print("solution", oeis_entry, ":", len(oeis_entry.values), solution)
             if oeis_entry.oeis_id % 1 == 0:
                 print("{}] -- finished".format(oeis_entry))
     finally:
