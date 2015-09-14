@@ -205,8 +205,8 @@ def term_i20(a, i):
 
 def main():
 
-    #filename = "oeis.pickle"
-    filename = "oeis_with_bfile-10000.pickle"
+    filename = "oeis.pickle"
+    #filename = "oeis_with_bfile-10000.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
@@ -251,11 +251,11 @@ def main():
     pool = multiprocessing.Pool()
     try:
 
-        for (oeis_entry, solution) in pool.imap(find_solution, work):
+        for (oeis_entry, solution) in map(find_solution, work):
             if solution is not None:
-                print("solution", oeis_entry, ":", len(oeis_entry.values), solution)
+                print("[{}] ({} elements) solution: {}".format(oeis_entry, len(oeis_entry.values), solution))
             if oeis_entry.oeis_id % 1 == 0:
-                print("{}] -- finished".format(oeis_entry))
+                print("[{}] ({} elements) -- processed.".format(oeis_entry, len(oeis_entry.values)))
     finally:
         pool.close()
         pool.join()
