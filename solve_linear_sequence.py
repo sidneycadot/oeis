@@ -2,9 +2,12 @@
 
 import pickle
 import numpy as np
-from fractions import Fraction
+from fractions import Fraction, gcd
 from fraction_based_linear_algebra import inverse_matrix
 from catalog import catalog
+import multiprocessing
+import itertools
+import functools
 
 class SafeSequenceAccessor:
     """ The Safe Sequence Accessor is a wrapper around a sequence
@@ -21,7 +24,7 @@ class SafeSequenceAccessor:
     def __len__(self):
         return len(self._sequence)
 
-def verify_linear_equation(sequence, first_index, term_definitions, solution):
+def verify_linear_equation(sequence, first_index, term_definitions, coefficients):
 
     first_index = int(first_index)
 
@@ -37,11 +40,11 @@ def verify_linear_equation(sequence, first_index, term_definitions, solution):
                 value = Fraction(term_definition(sequence, first_index + i))
                 equation.append(value)
         except:
-            # we tried to read beyond the boundaries of the sequence.
+            # Tried to read beyond the boundaries of the sequence.
             # Do not add this as an equation.
             pass
         else:
-            # we successfully added all values.
+            # Successfully added all values.
             equations_lhs.append(equation)
             equations_rhs.append(Fraction(sequence[i]))
 
@@ -51,7 +54,7 @@ def verify_linear_equation(sequence, first_index, term_definitions, solution):
     a = np.array(equations_lhs)
     b = np.array(equations_rhs)
 
-    fit = a.dot(solution)
+    fit = a.dot(coefficients)
     if np.any(fit != b):
         return False
 
@@ -59,56 +62,146 @@ def verify_linear_equation(sequence, first_index, term_definitions, solution):
 
 def solve_lineair_equation(sequence, first_index, term_definitions):
 
+    # Turn sequence in a 'SafeSequenceAccessor' that throws an exception
+    # whenever someone tries to access it out of its bounds.
     sequence = SafeSequenceAccessor(sequence)
 
     equations_lhs = []
     equations_rhs = []
 
-    candidates = np.arange(len(sequence))
-    #np.random.shuffle(candidates)
-
     EXTRA_EQUATIONS = 5
 
-    for candidate in candidates:
+    for candidate in range(len(sequence)):
 
+        # 'i' must be a regular int, otherwise the Fraction constructor will fail.
         i = int(first_index + candidate)
 
         try:
             lhs = [Fraction(term_definition(sequence, i)) for term_definition in term_definitions]
             rhs = Fraction(sequence[i])
         except:
-            # we tried to read beyond the boundaries of the sequence.
+            #Tried to read beyond the boundaries of the sequence.
             # Do not add this as an equation.
             pass
         else:
-            # we successfully added all values.
+            # We have succeeded in constructing both the LHS and RHS of the equation for this sequence value.
             equations_lhs.append(lhs)
             equations_rhs.append(rhs)
 
             if len(equations_lhs) == len(term_definitions) + EXTRA_EQUATIONS:
+                # We found a sufficient number of equations, terminate the search.
                 break
     else:
-        # candidates exhausted, but not enough equations.
+        # Candidates exhausted, but not enough equations.
         return None
 
     a = np.array(equations_lhs)
     b = np.array(equations_rhs)
 
+    # Do a least-squares fit.
+
     try:
-        solution = inverse_matrix(a.T.dot(a)).dot(a.T).dot(b)
+        coefficients = inverse_matrix(a.T.dot(a)).dot(a.T).dot(b)
     except ValueError:
         return None
 
-    fit = a.dot(solution)
+    # First, check if the fit is perfect for our equations.
+    # If not, it cannot be correct.
+    fit = a.dot(coefficients)
     if np.any(fit != b):
         return None
 
-    # Candidate seems legit -- but it may be a false positive yet.
-    # Test against all equations.
-    if not verify_linear_equation(sequence, first_index, term_definitions, solution):
+    # Candidate seems legit -- but it may still be a false positive that only works for the selected equations.
+    # We now test against *all* equations to make sure.
+    if not verify_linear_equation(sequence, first_index, term_definitions, coefficients):
         return None
 
+    # determine the least-common-multiple of the coefficient denominators.
+
+    lcm = 1
+    for c in coefficients:
+        lcm *= (c.denominator // gcd(lcm, c.denominator))
+
+    integer_coefficients = [int(c * lcm) for c in coefficients]
+
+    solution = (integer_coefficients, lcm)
+
     return solution
+
+def find_solution(work):
+    (oeis_entry, term_definitions) = work
+
+    if len(oeis_entry.offset) >=1:
+        first_index = oeis_entry.offset[0]
+    else:
+        first_index = 0
+
+    solution = solve_lineair_equation(oeis_entry.values, first_index, term_definitions)
+
+    return (oeis_entry, solution) # None or a 1-dinmensional ndarray of coefficients
+
+def term_i0(a, i):
+    return 1
+
+def term_i1(a, i):
+    return i
+
+def term_i2(a, i):
+    return i * i
+
+def term_i3(a, i):
+    return i ** 3
+
+def term_i4(a, i):
+    return i ** 4
+
+def term_i5(a, i):
+    return i ** 5
+
+def term_i6(a, i):
+    return i ** 6
+
+def term_i7(a, i):
+    return i ** 7
+
+def term_i8(a, i):
+    return i ** 8
+
+def term_i9(a, i):
+    return i ** 9
+
+def term_i10(a, i):
+    return i ** 10
+
+def term_i11(a, i):
+    return i ** 11
+
+def term_i12(a, i):
+    return i ** 12
+
+def term_i13(a, i):
+    return i ** 13
+
+def term_i14(a, i):
+    return i ** 14
+
+def term_i15(a, i):
+    return i ** 15
+
+def term_i16(a, i):
+    return i ** 16
+
+def term_i17(a, i):
+    return i ** 17
+
+def term_i18(a, i):
+    return i ** 18
+
+def term_i19(a, i):
+    return i ** 19
+
+def term_i20(a, i):
+    return i ** 20
 
 def main():
 
@@ -123,33 +216,49 @@ def main():
     print()
 
     term_definitions = [
-        ("1"      , lambda a, i: 1       ),
-        ("i"      , lambda a, i: i       ),
-        ("i^2"    , lambda a, i: i**2       ),
-        ("i^3"    , lambda a, i: i**3       ),
-        ("a[i-1]" , lambda a, i: a[i - 1]),
-        ("i*a[i-1]" , lambda a, i: Fraction(a[i-1], i - 1))
+        term_i0,
+        term_i1,
+        term_i2,
+        term_i3,
+        term_i4,
+        term_i5,
+        term_i6,
+        term_i7,
+        term_i8,
+        term_i9,
+        term_i10,
+        term_i11,
+        term_i12,
+        term_i13,
+        term_i14,
+        term_i15,
+        term_i16,
+        term_i17,
+        term_i18,
+        term_i19,
+        term_i20
+        #("a[i-1]" , lambda a, i: a[i - 1]),
+        #("i*a[i-1]" , lambda a, i: Fraction(a[i-1], i - 1))
     ]
 
     print("testing OEIS entries ...")
 
-    for oeis_entry in oeis_entries:
-        if oeis_entry.oeis_id % 1 == 0:
-            print("testing OEIS entry {} ({} values) ...".format(oeis_entry.oeis_id, len(oeis_entry.values)))
+    #if oeis_entry.oeis_id in catalog:
+    #    continue # skip known sequences
 
-        if oeis_entry.oeis_id in catalog:
-            continue # skip known sequences
+    work = [(oeis_entry, term_definitions) for oeis_entry in oeis_entries]
 
-        if len(oeis_entry.offset) >= 1:
-            first_index = oeis_entry.offset[0]
-        else:
-            first_index = 0
+    pool = multiprocessing.Pool()
+    try:
 
-        solution = solve_lineair_equation(oeis_entry.values, first_index, [tf for (ts, tf) in term_definitions])
-        if solution is not None:
-            print("{} offset = {}, length = {}, name = {}".format(oeis_entry, oeis_entry.offset, len(oeis_entry.values), oeis_entry.name))
-            print("        values = {}".format(oeis_entry.values[:15]))
-            print("        relation --> a[i] == {}".format(" + ".join("{} * {}".format(coefficient, ts) for ((ts, tf), coefficient) in zip(term_definitions, solution) if coefficient != 0)))
+        for (oeis_entry, solution) in pool.imap(find_solution, work):
+            if solution is not None:
+                print(oeis_entry, len(oeis_entry.values), solution)
+            if oeis_entry.oeis_id % 1 == 0:
+                print("{}] -- finished".format(oeis_entry))
+    finally:
+        pool.close()
+        pool.join()
 
 if __name__ == "__main__":
     main()
