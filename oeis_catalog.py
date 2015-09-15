@@ -185,7 +185,7 @@ class ExperimentalSequence(Sequence):
         return n % euler_phi(n)
 
 class PolynomialSequence(Sequence):
-    def __init__(self, first_index, coefficients):
+    def __init__(self, first_index, coefficients, divisor):
         Sequence.__init__(self, first_index, None)
         self._first_index  = first_index
         self._coefficients = coefficients
@@ -196,8 +196,9 @@ class PolynomialSequence(Sequence):
     def _value(self, n):
 
         value = sum(self._coefficients[i] * (n ** i) for i in range(len(self._coefficients)))
+        assert value % divisor == 0
 
-        return value
+        return value // divisor
 
 class FibonacciLikeSequence(Sequence):
     def __init__(self, initial_values, coefficients):
@@ -263,11 +264,11 @@ class TreeCountSequence(Sequence):
     def _value(self, index):
         return self._count_trees(1 + (self._fanout - 1) * (index - 1), 1)
 
-oeis_sequences_poly = {
-         85959 : lambda : PolynomialSequence(0, [0, 37])
+oeis_catalog_poly = {
+         85959 : lambda : PolynomialSequence(0, [0, 37], 1)
     }
 
-oeis_sequences_fiblike = {
+oeis_catalog_fiblike = {
             32 : lambda : FibonacciLikeSequence([2, 1], [ 1, 1]),
             45 : lambda : FibonacciLikeSequence([0, 1], [ 1, 1]),
           1045 : lambda : FibonacciLikeSequence([0, 1], [ 2, 1]),
@@ -276,7 +277,7 @@ oeis_sequences_fiblike = {
         104449 : lambda : FibonacciLikeSequence([3, 1], [ 1, 1])
     }
 
-oeis_sequences_numtheory = {
+oeis_catalog_numtheory = {
              5 : lambda : CountDivisorsSequence(),
             10 : lambda : EulerPhiSequence(),
             40 : lambda : PrimeSequence(),
@@ -286,7 +287,7 @@ oeis_sequences_numtheory = {
          20639 : lambda : SmallestDivisorSequence()
     }
 
-oeis_sequences_tcs = {
+oeis_catalog_tcs = {
           2572 : lambda : TreeCountSequence(2),
         176485 : lambda : TreeCountSequence(3),
         176503 : lambda : TreeCountSequence(4),
@@ -308,11 +309,11 @@ def _merge_dicts(*dicts):
     merged = OrderedDict(sorted(merged.items()))
     return merged
 
-oeis_sequences = _merge_dicts(
-        oeis_sequences_poly,
-        oeis_sequences_fiblike,
-        oeis_sequences_tcs,
-        oeis_sequences_numtheory
+oeis_catalog = _merge_dicts(
+        oeis_catalog_poly,
+        oeis_catalog_fiblike,
+        oeis_catalog_tcs,
+        oeis_catalog_numtheory
     )
 
 def main():
@@ -321,8 +322,8 @@ def main():
 
     MAX_CHARS  = 200
 
-    for key in oeis_sequences.keys():
-        sequence_maker = oeis_sequences[key]
+    for key in oeis_catalog.keys():
+        sequence_maker = oeis_catalog[key]
         sequence = sequence_maker()
         print("A{:06d} : {}".format(key, sequence.sequence_string(max_chars = MAX_CHARS)))
 
@@ -330,8 +331,8 @@ def main():
 
     # Show sequences
 
-    for key in oeis_sequences.keys():
-        sequence_maker = oeis_sequences[key]
+    for key in oeis_catalog.keys():
+        sequence_maker = oeis_catalog[key]
         sequence = sequence_maker()
         print("A{:06d} : {}".format(key, repr(sequence)))
 
@@ -349,7 +350,7 @@ def main():
 
     print("Data read.")
 
-    for (oeis_id, sequence_maker) in oeis_sequences.items():
+    for (oeis_id, sequence_maker) in oeis_catalog.items():
         sequence = sequence_maker()
         if (oeis_id - 1) >= len(oeis_entries):
             print("[A{:06d}] OEIS entry not found in database, skipping.".format(oeis_id))

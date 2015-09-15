@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 from fractions import Fraction, gcd
 from fraction_based_linear_algebra import inverse_matrix
-from catalog import catalog
+from oeis_catalog import oeis_catalog
 import multiprocessing
 import itertools
 import functools
@@ -155,10 +155,10 @@ def main():
         oeis_entries = pickle.load(f)
 
     print("size of OEIS database ...... : {:6d}".format(len(oeis_entries)))
-    print("size of our catalog ........ : {:6d}".format(len(catalog)))
+    #print("size of our catalog ........ : {:6d}".format(len(catalog)))
     print()
 
-    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 41)]
+    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 11)]
 
     print("testing OEIS entries ...")
 
@@ -173,6 +173,10 @@ def main():
         for (oeis_entry, solution) in pool.imap(find_solution, work):
             if solution is not None:
                 print("[{}] ({} elements) solution: {}".format(oeis_entry, len(oeis_entry.values), solution))
+                zz = list(solution[0])
+                while len(zz) > 0 and zz[-1] == 0:
+                    zz = zz[:-1]
+                print("    {:6d} : PolynomialSequence({}, {!r}, {}),".format(oeis_entry.oeis_id, oeis_entry.offset[0], zz, solution[1]))
             if oeis_entry.oeis_id % 1 == 0:
                 print("[{}] ({} elements) -- processed.".format(oeis_entry, len(oeis_entry.values)))
 
