@@ -140,73 +140,16 @@ def find_solution(work):
 
     return (oeis_entry, solution) # None or a 1-dinmensional ndarray of coefficients
 
-def term_i0(a, i):
-    return 1
+def term_i_power(a, i, exponent):
+    return i ** exponent
 
-def term_i1(a, i):
-    return i
-
-def term_i2(a, i):
-    return i * i
-
-def term_i3(a, i):
-    return i ** 3
-
-def term_i4(a, i):
-    return i ** 4
-
-def term_i5(a, i):
-    return i ** 5
-
-def term_i6(a, i):
-    return i ** 6
-
-def term_i7(a, i):
-    return i ** 7
-
-def term_i8(a, i):
-    return i ** 8
-
-def term_i9(a, i):
-    return i ** 9
-
-def term_i10(a, i):
-    return i ** 10
-
-def term_i11(a, i):
-    return i ** 11
-
-def term_i12(a, i):
-    return i ** 12
-
-def term_i13(a, i):
-    return i ** 13
-
-def term_i14(a, i):
-    return i ** 14
-
-def term_i15(a, i):
-    return i ** 15
-
-def term_i16(a, i):
-    return i ** 16
-
-def term_i17(a, i):
-    return i ** 17
-
-def term_i18(a, i):
-    return i ** 18
-
-def term_i19(a, i):
-    return i ** 19
-
-def term_i20(a, i):
-    return i ** 20
+def term_earlier_a(a, i, offset):
+    return a[i - offset]
 
 def main():
 
-    filename = "oeis.pickle"
-    #filename = "oeis_with_bfile-10000.pickle"
+    #filename = "oeis.pickle"
+    filename = "oeis_with_bfile-10000.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
@@ -215,31 +158,7 @@ def main():
     print("size of our catalog ........ : {:6d}".format(len(catalog)))
     print()
 
-    term_definitions = [
-        term_i0,
-        term_i1,
-        term_i2,
-        term_i3,
-        term_i4,
-        term_i5,
-        term_i6,
-        term_i7,
-        term_i8,
-        term_i9,
-        term_i10,
-        term_i11,
-        term_i12,
-        term_i13,
-        term_i14,
-        term_i15,
-        term_i16,
-        term_i17,
-        term_i18,
-        term_i19,
-        term_i20
-        #("a[i-1]" , lambda a, i: a[i - 1]),
-        #("i*a[i-1]" , lambda a, i: Fraction(a[i-1], i - 1))
-    ]
+    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 41)]
 
     print("testing OEIS entries ...")
 
@@ -256,6 +175,7 @@ def main():
                 print("[{}] ({} elements) solution: {}".format(oeis_entry, len(oeis_entry.values), solution))
             if oeis_entry.oeis_id % 1 == 0:
                 print("[{}] ({} elements) -- processed.".format(oeis_entry, len(oeis_entry.values)))
+
     finally:
         pool.close()
         pool.join()
