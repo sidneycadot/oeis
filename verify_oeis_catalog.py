@@ -27,7 +27,7 @@ def main():
 
         n = min(100, len(oeis_entry.values))
 
-        print("[A{:06d}] Checking {} of {} values ...".format(oeis_id, n, len(oeis_entry.values)))
+        #print("[A{:06d}] Verifying catalog entry, {} of {} values ...".format(oeis_id, n, len(oeis_entry.values)))
 
         good = all(sequence[sequence.first_index + i] == oeis_entry.values[i] for i in range(n))
         assert good
