@@ -51,4 +51,4 @@ TimerContextManager.py            |  Python module that simplifies timing length
 How it all fits together
 ------------------------
 
-<img alt="Overview of OEIS tools" src="docs/oeis-tools.png" width="50%">
+<img alt="Overview of OEIS tools" src="docs/oeis-tools.png" width="75%">
