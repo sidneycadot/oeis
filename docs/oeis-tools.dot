@@ -32,7 +32,6 @@ digraph G {
     remote_web -> fetch_oeis_database -> local_sqlite3;
     local_sqlite3 -> show_database_time;
     local_sqlite3 -> parse_oeis_database -> local_pickle;
-    parse_oeis_database -> warnings;
     local_pickle -> solve_linear_sequence -> human_in_the_loop;
     local_pickle -> find_sequences;
     local_pickle -> pickle_to_json -> local_json
