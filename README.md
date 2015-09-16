@@ -49,5 +49,6 @@ catalog.py                        |  Python module containing vetted OEIS sequen
 TimerContextManager.py            |  Python module that simplifies timing lengthy operations using a context manager.
 
 How it all fits together
+------------------------
 
-![Overview of OEIS tools](docs/oeis-tools.png =50%)
+<img alt="Overview of OEIS tools" src="docs/oeis-tools.png" width="50%">
