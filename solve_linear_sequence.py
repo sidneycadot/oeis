@@ -149,7 +149,7 @@ def term_earlier_a(a, i, offset):
 def main():
 
     #filename = "oeis.pickle"
-    filename = "oeis_with_bfile-10000.pickle"
+    filename = "oeis_v20150915.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
@@ -158,7 +158,7 @@ def main():
     #print("size of our catalog ........ : {:6d}".format(len(catalog)))
     print()
 
-    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 11)]
+    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 5)]
 
     print("testing OEIS entries ...")
 
@@ -168,19 +168,23 @@ def main():
     work = [(oeis_entry, term_definitions) for oeis_entry in oeis_entries]
 
     pool = multiprocessing.Pool()
+    f = open("poly.json", "w")
     try:
 
         for (oeis_entry, solution) in pool.imap(find_solution, work):
             if solution is not None:
                 print("[{}] ({} elements) solution: {}".format(oeis_entry, len(oeis_entry.values), solution))
-                zz = list(solution[0])
-                while len(zz) > 0 and zz[-1] == 0:
-                    zz = zz[:-1]
-                print("    {:6d} : PolynomialSequence({}, {!r}, {}),".format(oeis_entry.oeis_id, oeis_entry.offset[0], zz, solution[1]))
+                (coefficients, divisor) = solution
+                while len(coefficients) > 0 and coefficients[-1] == 0:
+                    coefficients = coefficients[:-1]
+                json_entry = "    [ \"A{:06d}\", \"PolynomialSequence\", [ {}, null, {}, {}) ] ],".format(oeis_entry.oeis_id, oeis_entry.offset[0], coefficients, divisor)
+                print(json_entry)
+                print(json_entry, file = f)
             if oeis_entry.oeis_id % 1 == 0:
                 print("[{}] ({} elements) -- processed.".format(oeis_entry, len(oeis_entry.values)))
 
     finally:
+        f.close()
         pool.close()
         pool.join()
 
