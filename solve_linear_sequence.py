@@ -4,10 +4,10 @@ import pickle
 import numpy as np
 from fractions import Fraction, gcd
 from fraction_based_linear_algebra import inverse_matrix
-from oeis_catalog import oeis_catalog
 import multiprocessing
 import itertools
 import functools
+from catalog import read_catalog_files
 
 class SafeSequenceAccessor:
     """ The Safe Sequence Accessor is a wrapper around a sequence
@@ -148,36 +148,36 @@ def term_earlier_a(a, i, offset):
 
 def main():
 
-    #filename = "oeis.pickle"
+    catalog = {}
+    catalog = read_catalog_files("catalog_files/*.json")
+    print("size of our catalog ........ : {:6d}".format(len(catalog)))
+
+    filename = "oeis.pickle"
     filename = "oeis_v20150915.pickle"
+    filename = "oeis_with_bfile.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
 
-    print("size of OEIS database ...... : {:6d}".format(len(oeis_entries)))
-    #print("size of our catalog ........ : {:6d}".format(len(catalog)))
-    print()
-
-    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 5)]
+    term_definitions = [functools.partial(term_i_power, exponent = e) for e in range(0, 21)]
 
     print("testing OEIS entries ...")
 
-    #if oeis_entry.oeis_id in catalog:
-    #    continue # skip known sequences
+    work = [(oeis_entry, term_definitions) for oeis_entry in oeis_entries if oeis_entry.oeis_id not in catalog and len(oeis_entry.offset) >= 1]
 
-    work = [(oeis_entry, term_definitions) for oeis_entry in oeis_entries]
+    print("size of work ............... : {:6d}".format(len(work)))
+    print()
 
     pool = multiprocessing.Pool()
     f = open("poly.json", "w")
     try:
-
         for (oeis_entry, solution) in pool.imap(find_solution, work):
             if solution is not None:
                 print("[{}] ({} elements) solution: {}".format(oeis_entry, len(oeis_entry.values), solution))
                 (coefficients, divisor) = solution
                 while len(coefficients) > 0 and coefficients[-1] == 0:
                     coefficients = coefficients[:-1]
-                json_entry = "    [ \"A{:06d}\", \"PolynomialSequence\", [ {}, null, {}, {}) ] ],".format(oeis_entry.oeis_id, oeis_entry.offset[0], coefficients, divisor)
+                json_entry = "    [ \"A{:06d}\", \"PolynomialSequence\", [ {}, null, {}, {} ] ],".format(oeis_entry.oeis_id, oeis_entry.offset[0], coefficients, divisor)
                 print(json_entry)
                 print(json_entry, file = f)
             if oeis_entry.oeis_id % 1 == 0:
