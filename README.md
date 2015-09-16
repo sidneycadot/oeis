@@ -47,3 +47,5 @@ charmap.py                        |  Python module that defines lists of accepta
 OeisEntry.py                      |  Python module that defines a simple class that contains (most of) the data of a single OEIS sequence.
 catalog.py                        |  Python module containing vetted OEIS sequences.
 TimerContextManager.py            |  Python module that simplifies timing lengthy operations using a context manager.
+
+![Overview of OEIS tools](docs/oeis-tools.png)
