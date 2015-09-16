@@ -48,4 +48,6 @@ OeisEntry.py                      |  Python module that defines a simple class t
 catalog.py                        |  Python module containing vetted OEIS sequences.
 TimerContextManager.py            |  Python module that simplifies timing lengthy operations using a context manager.
 
-![Overview of OEIS tools](docs/oeis-tools.png)
+How it all fits together
+
+![Overview of OEIS tools](docs/oeis-tools.png =50%)
