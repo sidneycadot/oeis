@@ -1,0 +1,9 @@
+[
+    [ "A000005", "CountDivisorsSequence"  , [ ] ],
+    [ "A000010", "EulerPhiSequence"       , [ ] ],
+    [ "A000040", "PrimeSequence"          , [ ] ],
+    [ "A000203", "SumDivisorsSequence"    , [ ] ],
+    [ "A000720", "PrimePiSequence"        , [ ] ],
+    [ "A001359", "TwinPrimeSequence"      , [ ] ],
+    [ "A020639", "SmallestDivisorSequence", [ ] ]
+]
