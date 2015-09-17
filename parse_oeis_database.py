@@ -347,8 +347,13 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
 
     keywords = sorted(set(k for k in keywords if k != ""))
 
+    # Some checks on the keywords themselves
+
     if "full" in keywords and "fini" not in keywords:
-        logger.warning("[A{:06}] Keyword 'full' without keyword 'fini'.")
+        logger.warning("[A{:06}] Keyword 'full' occurs without keyword 'fini'.".format(oeis_id))
+
+    if "tabl" in keywords and "tabf" in keywords:
+        logger.warning("[A{:06}] Keywords 'tabl' and 'tabf' occur together.".format(oeis_id))
 
     # ========== process b-file, a file that lists (index, value) pairs, and merge it with the content obtained from the %S, %T, and %U lines.
 
