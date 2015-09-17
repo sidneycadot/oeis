@@ -1,4 +1,5 @@
 
+import logging
 import glob
 import json
 from collections import OrderedDict
@@ -201,16 +202,18 @@ class PolynomialSequence(Sequence):
 
         return value // self._divisor
 
-class FibonacciLikeSequence(Sequence):
-    def __init__(self, initial_values, coefficients):
+class RecurrentSequence(Sequence):
+    def __init__(self, first_index, last_index, initial_values, coefficients, k0):
         assert len(initial_values) == len(coefficients)
-        Sequence.__init__(self, 0, None)
+        Sequence.__init__(self, first_index, last_index)
         self._initial_values = initial_values
-        self._coefficients = coefficients
+        self._coefficients   = coefficients
+        self._k0             = k0
+
         self._memo = {}
 
     def __repr__(self):
-        return "FibonacciLikeSequence({!r}, {!r})".format(self._initial_values, self._coefficients)
+        return "RecurrentSequence({!r}, {!r})".format(self._first_index, self._last_index, self._initial_values, self._coefficients, self._k0)
 
     def _value(self, n):
 
@@ -220,7 +223,7 @@ class FibonacciLikeSequence(Sequence):
         if n in self._memo:
             return self._memo[n]
 
-        value = sum(self._value(n - len (self._coefficients) + i) * self._coefficients[i] for i in range(len(self._coefficients)))
+        value = sum(self._value(n - len (self._coefficients) + i) * self._coefficients[i] for i in range(len(self._coefficients))) + self._k0
 
         self._memo[n] = value
 
@@ -271,7 +274,7 @@ def read_catalog_files(glob_pattern):
 
     sequence_name_to_type = {
         "PolynomialSequence"      : PolynomialSequence,
-        "FibonacciLikeSequence"   : FibonacciLikeSequence,
+        "RecurrentSequence"       : RecurrentSequence,
         "TreeCountSequence"       : TreeCountSequence,
         "CountDivisorsSequence"   : CountDivisorsSequence,
         "EulerPhiSequence"        : EulerPhiSequence,
@@ -288,6 +291,8 @@ def read_catalog_files(glob_pattern):
 
     for filename in filenames:
 
+        print("=====>", filename)
+
         with open(filename) as f:
             oeis_catalog = json.load(f)
 
@@ -295,6 +300,9 @@ def read_catalog_files(glob_pattern):
 
             assert oeis_id_string.startswith("A")
             oeis_id = int(oeis_id_string[1:])
+
+            if oeis_id in catalog:
+                print("A{:06d} in file {!r} previously defined as {!r}.".format(oeis_id, filename, catalog[oeis_id]))
 
             assert oeis_id not in catalog
 

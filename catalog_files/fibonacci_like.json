@@ -1,8 +1,0 @@
-[
-    [ "A000032", "FibonacciLikeSequence", [ [2, 1], [ 1, 1] ] ],
-    [ "A000045", "FibonacciLikeSequence", [ [0, 1], [ 1, 1] ] ],
-    [ "A001045", "FibonacciLikeSequence", [ [0, 1], [ 2, 1] ] ],
-    [ "A010892", "FibonacciLikeSequence", [ [1, 1], [-1, 1] ] ],
-    [ "A048654", "FibonacciLikeSequence", [ [1, 4], [ 1, 2] ] ],
-    [ "A104449", "FibonacciLikeSequence", [ [3, 1], [ 1, 1] ] ]
-]
