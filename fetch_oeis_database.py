@@ -74,9 +74,9 @@ def fetch_entries_into_database(dbconn, entries):
 
     assert isinstance(entries, set)
 
-    FETCH_BATCH_SIZE  = 5000 # 200 -- 500 are reasonable
-    NUM_PROCESSES     =   40 # 20
-    SLEEP_AFTER_BATCH =  5.0 # [seconds]
+    FETCH_BATCH_SIZE  = 1000 # 200 -- 500 are reasonable
+    NUM_PROCESSES     =   20 # 20
+    SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
     if NUM_PROCESSES > 1:
         pool = multiprocessing.Pool(NUM_PROCESSES)
@@ -93,7 +93,7 @@ def fetch_entries_into_database(dbconn, entries):
             random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
             random_entries_to_be_fetched = random.sample(entries, random_entries_count)
 
-            logger.info("Executing parallel fetch for {} out of {} entries.".format(len(random_entries_to_be_fetched), len(entries)))
+            logger.info("Executing fetch using {} {} for {} out of {} entries.".format(len(random_entries_to_be_fetched), NUM_PROCESSES, "worker" if NUM_PROCESSES == 1 else "workers", len(entries)))
 
             t1 = time.time()
 
@@ -107,7 +107,7 @@ def fetch_entries_into_database(dbconn, entries):
             t2 = time.time()
 
             duration = (t2 - t1)
-            logger.info("{} parallel fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
+            logger.info("{} fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
 
             # Process the fetch results.
 
