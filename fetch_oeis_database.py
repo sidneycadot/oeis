@@ -5,10 +5,26 @@ import sqlite3
 import random
 import multiprocessing
 import logging
-from   timer import start_timer
-from   fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
+
+from timer import start_timer
+from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
 
 logger = logging.getLogger(__name__)
+
+def ensure_database_schema_created(dbconn):
+
+    schema = """
+             CREATE TABLE IF NOT EXISTS oeis_entries (
+                 oeis_id       INTEGER  PRIMARY KEY NOT NULL, -- OEIS ID number.
+                 t1            REAL                 NOT NULL, -- earliest timestamp when the content below was first fetched.
+                 t2            REAL                 NOT NULL, -- most recent timestamp when the content below was fetched.
+                 main_content  TEXT                 NOT NULL, -- main content (i.e., lines starting with '%' sign).
+                 bfile_content TEXT                 NOT NULL  -- b-file content (secondary file containing sequence entries).
+             );
+             """
+
+    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+    dbconn.execute(schema)
 
 def find_highest_oeis_id():
 
@@ -44,22 +60,6 @@ def find_highest_oeis_id():
 
     return success_id
 
-def setup_schema(dbconn):
-
-    schema = """
-             CREATE TABLE IF NOT EXISTS oeis_entries (
-                 oeis_id       INTEGER  PRIMARY KEY NOT NULL, -- OEIS ID number.
-                 t_first_fetch REAL                 NOT NULL, -- earliest timestamp when the content below was first fetched.
-                 t_most_recent REAL                 NOT NULL, -- most recent timestamp when the content below was fetched.
-                 main_content  TEXT                 NOT NULL, -- main content (i.e., lines starting with '%' sign).
-                 bfile_content TEXT                 NOT NULL  -- b-file content (secondary file containing sequence entries).
-             );
-             CREATE INDEX IF NOT EXISTS oeis_entries_index ON oeis_entries(oeis_id);
-             """
-
-    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
-    dbconn.executescript(schema)
-
 def safe_fetch_remote_oeis_entry(entry):
     # This version of the remote fetcher intercepts and reports any exceptions,
     # since they do not work across the multiprocessing execution.
@@ -74,7 +74,7 @@ def fetch_entries_into_database(dbconn, entries):
 
     assert isinstance(entries, set)
 
-    FETCH_BATCH_SIZE  = 200 # 500
+    FETCH_BATCH_SIZE  = 200 # 200 -- 500 ar reasonable
     NUM_PROCESSES     =  20 # 20
     SLEEP_AFTER_BATCH = 5.0 # [seconds]
 
@@ -135,19 +135,19 @@ def fetch_entries_into_database(dbconn, entries):
 
                     if previous_content is None:
                         # The oeis_id does not occur in the database yet. We will insert it.
-                        query = "INSERT INTO oeis_entries(oeis_id, t_first_fetch, t_most_recent, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
+                        query = "INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
                         dbcursor.execute(query, (result.oeis_id, result.timestamp, result.timestamp, result.main_content, result.bfile_content))
                         countNewEntries += 1
                     elif previous_content != (result.main_content, result.bfile_content):
                         # The database content is stale.
-                        # Update t_first_fetch, t_most_recent, and content.
-                        query = "UPDATE oeis_entries SET t_first_fetch = ?, t_most_recent = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
+                        # Update t1, t2, and content.
+                        query = "UPDATE oeis_entries SET t1 = ?, t2 = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
                         dbcursor.execute(query, (result.timestamp, result.timestamp, result.main_content, result.bfile_content, result.oeis_id))
                         countUpdatedEntries += 1
                     else:
                         # The database content is identical to the freshly fetched content.
-                        # We will just update the t_most_recent field, indicating the fresh fetch.
-                        query = "UPDATE oeis_entries SET t_most_recent = ? WHERE oeis_id = ?;"
+                        # We will just update the t2 field, indicating the fresh fetch.
+                        query = "UPDATE oeis_entries SET t2 = ? WHERE oeis_id = ?;"
                         dbcursor.execute(query, (result.timestamp, result.oeis_id))
                         countIdenticalEntries += 1
                 finally:
@@ -221,7 +221,7 @@ def update_database_entries_by_score(dbconn, howmany):
 
     dbcursor = dbconn.cursor()
     try:
-        query = "SELECT oeis_id FROM oeis_entries ORDER BY (? - t_most_recent) / max(t_most_recent - t_first_fetch, 1e-6) DESC LIMIT ?;"
+        query = "SELECT oeis_id FROM oeis_entries ORDER BY (? - t2) / max(t2 - t1, 1e-6) DESC LIMIT ?;"
         dbcursor.execute(query, (t_current, howmany))
         highest_score_entries = dbcursor.fetchall()
     finally:
@@ -249,7 +249,7 @@ def database_update_cycle(database_filename):
             dbconn = sqlite3.connect(database_filename)
 
             try:
-                setup_schema(dbconn)
+                ensure_database_schema_created(dbconn)
                 highest_oeis_id = find_highest_oeis_id()
                 make_database_complete(dbconn, highest_oeis_id)
                 update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
