@@ -30,3 +30,6 @@ class TimerContextManager:
         hours = math.floor(minutes / 3600.0)
         minutes_left = minutes - (60.0 * hours)
         return "{} hours and {:.3f} minutes".format(hours, minutes_left)
+
+def start_timer():
+    return TimerContextManager()

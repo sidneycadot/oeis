@@ -5,8 +5,8 @@ import sqlite3
 import random
 import multiprocessing
 import logging
-from   TimerContextManager     import TimerContextManager
-from   fetch_remote_oeis_entry import fetch_remote_oeis_entry, OeisEntryEmptyError
+from   timer import start_timer
+from   fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def find_highest_oeis_id():
 
         try:
             fetch_remote_oeis_entry(fetch_id, fetch_bfile_flag = False)
-        except OeisEntryEmptyError:
+        except BadOeisResponse:
             # This exception happens when trying to read beyond the last entry in the database.
             # We mark the failure and continue the binary search.
             logging.info("OEIS entry {} does not exist.".format(fetch_id))
@@ -233,7 +233,7 @@ def update_database_entries_by_score(dbconn, howmany):
     fetch_entries_into_database(dbconn, highest_score_entries)
 
 def vacuum_database(dbconn):
-    with TimerContextManager() as timer:
+    with start_timer() as timer:
         logger.info("Initiating VACUUM on database ...")
         dbconn.execute("VACUUM;")
         logger.info("VACUUM done in {}.".format(timer.duration_string()))
@@ -244,7 +244,7 @@ def database_update_cycle(database_filename):
 
         # Perform an update cycle.
 
-        with TimerContextManager() as timer:
+        with start_timer() as timer:
 
             dbconn = sqlite3.connect(database_filename)
 

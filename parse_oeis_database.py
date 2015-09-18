@@ -11,11 +11,33 @@ import logging
 import pickle
 import re
 
-from OeisEntry           import OeisEntry
-from charmap             import acceptable_characters
-from TimerContextManager import TimerContextManager
+from OeisEntry import OeisEntry
+from charmap   import acceptable_characters
+from timer     import start_timer
 
 logger = logging.getLogger(__name__)
+
+#def filter_main_content(text, oeis_id):
+
+    # We are interested in the lines that start with a '%' followed by
+    # a directive identification character, followed by a single space,
+    # followed by an OEIS id ('Axxxxxx'), followed by directive data.
+    #
+    # The directive data will be either an empty string or a string
+    # staring with a space character.
+
+#    directive_line_pattern = "(%.) A{oeis_id:06d}(.*)$".format(oeis_id = oeis_id)
+
+#    content = re.findall(directive_line_pattern, text, re.MULTILINE)
+
+#    if len(content) == 0:
+#        raise OeisEntryEmptyError("no valid content lines found")
+
+#    content = "\n".join(directive + directive_data for (directive, directive_data) in content)
+
+#    return content
+
+
 
 # As described here: https://oeis.org/eishelp1.html
 
@@ -398,7 +420,7 @@ def process_database(database_filename):
 
     entries = []
 
-    with TimerContextManager() as timer:
+    with start_timer() as timer:
         dbconn = sqlite3.connect(database_filename)
         try:
             dbcursor = dbconn.cursor()
@@ -424,7 +446,7 @@ def process_database(database_filename):
 
     (root, ext) = os.path.splitext(database_filename)
 
-    with TimerContextManager() as timer:
+    with start_timer() as timer:
         filename_pickle = os.path.join(root + ".pickle")
         with open(filename_pickle, "wb") as f:
             pickle.dump(entries, f)
@@ -434,7 +456,7 @@ def process_database(database_filename):
 
     if len(entries) > WRITE_REDUCED_THRESHOLD:
         reduced_entries = entries[:WRITE_REDUCED_THRESHOLD]
-        with TimerContextManager() as timer:
+        with start_timer() as timer:
             filename_pickle_reduced = root + "-{}.pickle".format(len(reduced_entries))
             with open(filename_pickle_reduced, "wb") as f:
                 pickle.dump(reduced_entries, f)
