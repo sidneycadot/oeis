@@ -1,120 +1,48 @@
 #! /usr/bin/env python3
 
-import re
 import time
 import sqlite3
-import urllib.request
 import random
 import multiprocessing
 import logging
-from   TimerContextManager import TimerContextManager
+from   TimerContextManager     import TimerContextManager
+from   fetch_remote_oeis_entry import fetch_remote_oeis_entry, OeisEntryEmptyError
 
 logger = logging.getLogger(__name__)
 
-def oeis_internal_html_to_content(html):
-
-    # Parse the OEIS main sequence page html.
-    # We previously used BeautifulSoup4 for this, but using regular expressions
-    # works equally well, and it's one less dependency.
-
-    # The pattern uses non-greedy matching; we also allow newlines in the matched pattern.
-    tt_pattern = re.compile("<tt>%.*?</tt>", re.DOTALL)
-
-    tt_matches = tt_pattern.findall(html)
-
-    content = []
-
-    for tt in tt_matches:
-        assert tt.startswith("<tt>")
-        assert tt.endswith("</tt>")
-        tt = tt[4:-5]
-        tt = tt.strip()
-        content.append(tt)
-
-    content = "\n".join(content)
-    return content
-
-class FetchFailure:
-    ok = False
-    is404 = False
-
-class FetchFailure404(FetchFailure):
-    is404 = True
-
-class FetchSuccess:
-    ok = True
-    def __init__(self, oeis_id, timestamp, main_content, bfile_content):
-        self.oeis_id       = oeis_id
-        self.timestamp     = timestamp
-        self.main_content  = main_content
-        self.bfile_content = bfile_content
-
-def fetch_oeis_internal_entry(oeis_id, fetch_bfile_flag = True):
-
-    # We fetch the "internal" version of the OEIS entry,
-    # which is easy to parse and documented.
-
-    main_url  = "http://oeis.org/A{oeis_id:06d}/internal".format(oeis_id = oeis_id)
-    bfile_url = "http://oeis.org/A{oeis_id:06d}/b{oeis_id:06d}.txt".format(oeis_id = oeis_id) if fetch_bfile_flag else None
-
-    urls = (main_url, bfile_url)
-
-    timestamp = time.time()
-
-    # Try to fetch the main page.
-    # Any failure that leads to an exception leads to an abort.
-
-    url_response_data = []
-    for url in urls:
-        if url is not None:
-            try:
-                with urllib.request.urlopen(url) as response:
-                    response_data = response.read().decode(response.headers.get_content_charset())
-            except urllib.error.HTTPError as exception:
-                logger.error("Error while fetching '{}': {}.".format(url, exception))
-                if exception.code == 404:
-                    return FetchFailure404()
-                else:
-                    return FetchFailure()
-            except urllib.error.URLError as exception:
-                # Log the failure, and return None.
-                logger.error("Error while fetching '{}': {}.".format(url, exception))
-                return FetchFailure()
-        else:
-            response_data = None
-        url_response_data.append(response_data)
-
-    (main_content, bfile_content) = url_response_data
-
-    main_content = oeis_internal_html_to_content(main_content)
-
-    return FetchSuccess(oeis_id, timestamp, main_content, bfile_content)
-
 def find_highest_oeis_id():
 
-    OEIS_SUCCESS =  260000
-    OEIS_FAILURE = 1000000
+    SLEEP_AFTER_FAILURE = 5.0
 
-    while OEIS_SUCCESS + 1 != OEIS_FAILURE:
+    success_id =  262000 # we know a-priori that this entry exists
+    failure_id = 1000000 # we know a-priori that this entry does not exist
 
-        OEIS_ATTEMPT = (OEIS_SUCCESS + OEIS_FAILURE) // 2
+    # Do a binary search, looking for the success/failure boundary.
+    while success_id + 1 != failure_id:
 
-        logger.info("Highest OEIS range is ({}, {}), attempting to fetch entry # {} ...".format(OEIS_SUCCESS, OEIS_FAILURE, OEIS_ATTEMPT))
+        fetch_id = (success_id + failure_id) // 2
 
-        result = fetch_oeis_internal_entry(OEIS_ATTEMPT, fetch_bfile_flag = False)
+        logger.info("OEIS search range is ({}, {}), attempting to fetch entry {} ...".format(success_id, failure_id, fetch_id))
 
-        if result.ok: # success!
-            OEIS_SUCCESS = OEIS_ATTEMPT
-        elif result.is404:
-            # Pages that don't exist are indicated with a HTTP 404 response.
-            OEIS_FAILURE = OEIS_ATTEMPT
-        else:
+        try:
+            fetch_remote_oeis_entry(fetch_id, fetch_bfile_flag = False)
+        except OeisEntryEmptyError:
+            # This exception happens when trying to read beyond the last entry in the database.
+            # We mark the failure and continue the binary search.
+            logging.info("OEIS entry {} does not exist.".format(fetch_id))
+            failure_id = fetch_id
+        except BaseException as exception:
             # Some other error occurred. We have to retry.
-            logger.warning("Unexpected fetch result, retrying in 5 seconds.")
-            time.sleep(5.0)
+            logger.error("Unexpected fetch result ({}), retrying in {} seconds.".format(exception, SLEEP_AFTER_FAILURE))
+            time.sleep(SLEEP_AFTER_FAILURE)
+        else:
+            # We mark the success and continue the binary search.
+            logging.info("OEIS entry {} exists.".format(fetch_id))
+            success_id = fetch_id
 
-    logger.info("Highest OEIS entry is A{:06}.".format(OEIS_SUCCESS))
-    return OEIS_SUCCESS
+    logger.info("Last valid OEIS entry is A{:06}.".format(success_id))
+
+    return success_id
 
 def setup_schema(dbconn):
 
@@ -132,6 +60,16 @@ def setup_schema(dbconn):
     schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
     dbconn.executescript(schema)
 
+def safe_fetch_remote_oeis_entry(entry):
+    # This version of the remote fetcher intercepts and reports any exceptions,
+    # since they do not work across the multiprocessing execution.
+    try:
+        result = fetch_remote_oeis_entry(entry, True)
+    except BaseException as exception:
+        logger.error("Unable to fetch entry {}: '{}'.".format(entry, exception))
+        result = None
+    return result
+
 def fetch_entries_into_database(dbconn, entries):
 
     assert isinstance(entries, set)
@@ -140,7 +78,11 @@ def fetch_entries_into_database(dbconn, entries):
     NUM_PROCESSES     =  20 # 20
     SLEEP_AFTER_BATCH = 5.0 # [seconds]
 
-    pool = multiprocessing.Pool(NUM_PROCESSES)
+    if NUM_PROCESSES > 1:
+        pool = multiprocessing.Pool(NUM_PROCESSES)
+    else:
+        pool = None
+
     try:
 
         tStart = time.time()
@@ -154,8 +96,13 @@ def fetch_entries_into_database(dbconn, entries):
             logger.info("Executing parallel fetch for {} out of {} entries.".format(len(random_entries_to_be_fetched), len(entries)))
 
             t1 = time.time()
-            results = pool.map(fetch_oeis_internal_entry, random_entries_to_be_fetched)
-            #results = list(map(lambda entry : fetch_oeis_internal_entry(entry, fetch_bfile_flag = True), random_entries_to_be_fetched))
+
+            if pool is None:
+                # execute fetches sequentially
+                results = [safe_fetch_remote_oeis_entry(entry) for entry in random_entries_to_be_fetched]
+            else:
+                # execute fetches in parallel
+                results = pool.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched)
 
             t2 = time.time()
 
@@ -171,7 +118,7 @@ def fetch_entries_into_database(dbconn, entries):
 
             for result in results:
 
-                if not result.ok:
+                if result is None:
                     # Skip entries that are not okay
                     countFailures += 1
                     continue
@@ -227,8 +174,9 @@ def fetch_entries_into_database(dbconn, entries):
                 time.sleep(SLEEP_AFTER_BATCH)
 
     finally:
-        pool.close()
-        pool.join()
+        if pool is not None:
+            pool.close()
+            pool.join()
 
 def make_database_complete(dbconn, highest_oeis_id):
 
@@ -290,40 +238,43 @@ def vacuum_database(dbconn):
         dbconn.execute("VACUUM;")
         logger.info("VACUUM done in {}.".format(timer.duration_string()))
 
+def database_update_cycle(database_filename):
+
+    while True:
+
+        # Perform an update cycle.
+
+        with TimerContextManager() as timer:
+
+            dbconn = sqlite3.connect(database_filename)
+
+            try:
+                setup_schema(dbconn)
+                highest_oeis_id = find_highest_oeis_id()
+                make_database_complete(dbconn, highest_oeis_id)
+                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
+                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
+                vacuum_database(dbconn)
+            finally:
+                dbconn.close()
+
+            logger.info("Full database update cycle took {}.".format(timer.duration_string()))
+
+        # Pause between update cycles.
+
+        PAUSE = max(300.0, random.gauss(1800.0, 600.0))
+        logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
+        time.sleep(PAUSE)
+
 def main():
+
+    database_filename = "oeis.sqlite3"
 
     FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-    database_filename = "oeis.sqlite3"
-
     try:
-
-        while True:
-
-            # Perform an update cycle.
-
-            with TimerContextManager() as timer:
-
-                dbconn = sqlite3.connect(database_filename)
-                try:
-                    setup_schema(dbconn)
-                    highest_oeis_id = find_highest_oeis_id()
-                    make_database_complete(dbconn, highest_oeis_id)
-                    update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
-                    update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
-                    vacuum_database(dbconn)
-                finally:
-                    dbconn.close()
-
-                logger.info("Full database update cycle took {}.".format(timer.duration_string()))
-
-            # Pause between update cycles.
-
-            PAUSE = max(300.0, random.gauss(1800.0, 600.0))
-            logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
-            time.sleep(PAUSE)
-
+        database_update_cycle(database_filename)
     finally:
         logging.shutdown()
 
