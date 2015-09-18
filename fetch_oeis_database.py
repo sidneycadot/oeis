@@ -61,8 +61,8 @@ def find_highest_oeis_id():
     return success_id
 
 def safe_fetch_remote_oeis_entry(entry):
-    # This version of the remote fetcher intercepts and reports any exceptions,
-    # since they do not work across the multiprocessing execution.
+    # Intercepts and reports any exceptions.
+    # The (parallel or sequential) map must run to completion.
     try:
         result = fetch_remote_oeis_entry(entry, True)
     except BaseException as exception:
@@ -74,9 +74,9 @@ def fetch_entries_into_database(dbconn, entries):
 
     assert isinstance(entries, set)
 
-    FETCH_BATCH_SIZE  = 200 # 200 -- 500 ar reasonable
-    NUM_PROCESSES     =  20 # 20
-    SLEEP_AFTER_BATCH = 5.0 # [seconds]
+    FETCH_BATCH_SIZE  = 5000 # 200 -- 500 are reasonable
+    NUM_PROCESSES     =   40 # 20
+    SLEEP_AFTER_BATCH =  5.0 # [seconds]
 
     if NUM_PROCESSES > 1:
         pool = multiprocessing.Pool(NUM_PROCESSES)
