@@ -1,0 +1,77 @@
+2015-09-16, 18:28 (SC)
+
+(P1)    1844  missing %A directive.                                              A000017
+(P2)     660  missing %O directive.                                              A237988
+(P3)     660  empty %S line.                                                     A237988
+(P4)     456  ill-formatted %O directive (must be %O n,m)                        A038219
+(P5)     330  %S/%T/%U / b-file mismatch                                         A000001, A001130
+(P6)     221  first-index mismatch (%S/%T/%U vs b-file)                          A000001, A000199
+(P7)      41  %S/%T/%U has more values than b-file                               A002235
+(P8)      31  non-sequential indices in b-file                                   A049532, A064215
+(P9)      28  %O magnitude claim (second number) incorrect according to b-file   A013596
+(P10)     23  Bad characters in directive data (e.g. ligature ff, fl).           A007054, A007283
+(P11)     21  Duplicate keyword in %K directive                                  A003184
+(P12)     18  Parse error in b-file                                              A050399
+(P13)      9  Empty keyword (or trailing comma) in %K directive                  A032556
+(P14)      2  Bad format for %I directive                                        A005254, A006809
+(P15)      1  Undocumented keyword in %K directive ('probation')                 A247556
+
+2015-09-16, 22:31 (CG)
+
+==> sequences with any of the keywords (dead, recycled, allocated, allocating) should not have an author
+==> an allocated sequence should have only %I, %S, %N, and %K lines.
+==> sequences for which all terms are in {-1, 0, 1} should have only the first offset number.
+==> sequences for which the first term with absolute value greater than 1 is not displayed only have a second offset if it is manually entered (but some have not been).
+
+2015-09-17, 01:05 (NS)
+
+==> Concerning P14: There is nothing wrong here. Please modify your rules to allow these formats.
+
+2015-09-17, 08:01 (SC)
+
+If there are any more combinations of keywords that should trigger warnings I'd like to know. I currently have:
+
+==> "full" without "fini"      --> warning (never occurs).
+==> "tabl" and "tabf" together --> warning (occurred 1 time, fixed now).
+
+2015-09-17, 17:20 (CG)
+
+==> https://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords is the closest thing we have to an authoritative reference on keywords
+==> https://oeis.org/wiki/User:Charles_R_Greathouse_IV/Format   is the closest thing we have to an authoritative reference on the b-file
+
+2015-09-17, 17:20 (CG)
+
+==> Keywords "recycled", "allocated", and "allocating" should never appear with other keywords. 
+==> keyword:dead should also appear alone, but in practice there are cases where it does not (I count 54).
+==> kw:nice should never appear with kw:less.
+==> kw:easy should never appear with kw:hard.
+==> kw:nonn should never appear with kw:sign.
+==> keywords done, dupe, huge, and part have been deprecated and should not be used in any sequences.
+
+2015-09-17, 17:20 (Frank Adams-Waters)
+
+==> "nice" should also never appear with "obsc".
+
+2015-09-17, 18:25 (CG)
+
+==> Forbidden combination: full and more
+==> I've added this, and the others, to https://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords
+
+2015-09-17, 18:25 (CG)
+
+==> Forbidden combination, though: full and more.
+
+2015-09-17, 19:03 (Frank Adams-Waters)
+
+==> I tend to think that "nice" and "core" really are incompatible with "obsc" and "uned".
+
+2015-09-17, 19:46 (NS)
+
+==> There is also nothing wrong with the combination less+more
+
+2015-09-18, 22:29 (Ray Chandler)
+
+I believe all the problems you identified that involved b-files (P5, P6, P7, P8, P12) have been addressed for the sequences you listed in your initial problem report.
+If you can provide details for other similar problems, I'd be happy to work on them as time permits.
+
+
