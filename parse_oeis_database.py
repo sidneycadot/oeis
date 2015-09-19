@@ -2,41 +2,20 @@
 
 # Code to analyze OEIS entries.
 
-import sys
 import os
-import sqlite3
-import collections
-import time
-import logging
-import pickle
+import sys
 import re
+import time
+import pickle
+import collections
+import logging
+import sqlite3
 
 from OeisEntry import OeisEntry
 from charmap   import acceptable_characters
 from timer     import start_timer
 
 logger = logging.getLogger(__name__)
-
-#def filter_main_content(text, oeis_id):
-
-    # We are interested in the lines that start with a '%' followed by
-    # a directive identification character, followed by a single space,
-    # followed by an OEIS id ('Axxxxxx'), followed by directive data.
-    #
-    # The directive data will be either an empty string or a string
-    # staring with a space character.
-
-
-#    content = re.findall(directive_line_pattern, text, re.MULTILINE)
-
-#    if len(content) == 0:
-#        raise OeisEntryEmptyError("no valid content lines found")
-
-#    content = "\n".join(directive + directive_data for (directive, directive_data) in content)
-
-#    return content
-
-
 
 # As described here: https://oeis.org/eishelp1.html
 
@@ -141,17 +120,27 @@ bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 
 def parse_main_content(main_content):
 
-    # Select only lines that have the proper directive format:
+    # Select only lines that have the proper directive format.
 
-    directive_line_pattern = "(%.) A{06d}(.*)$".format(oeis_id)
+    directive_line_pattern = "%(.) A{06d}(.*)$".format(oeis_id)
 
     lines = re.findall(directive_line_pattern, main_content, re.MULTILINE)
 
-    lines = [directive + directive_data for (directive, directive_data) in lines]
+    stripped_lines = []
+    for (directive, directive_value) in lines:
+        if directive_value.startswith(" "):
+            directive_value = directive_value[1:]
+        stripped_directive_value = directive_value.strip()
+        if len(stripped_directive_value) != len(directive_value):
+            logger.warning("[A{:06}] Value of %{} directive ({!r}) has superfluous whitespace.".format(oeis_id, directive, directive_value)
+        stripped_lines.append((directive, stripped_directive_value))
+
+    lines = stripped_lines
+    del stripped_lines
 
     # ========== check order of directives
 
-    directive_order = "".join(line[1] for line in lines)
+    directive_order = "".join(directive for (directive, directive_value) in lines)
 
     assert expected_directive_order.match(directive_order)
 
@@ -169,61 +158,56 @@ def parse_main_content(main_content):
     line_O  = None
     lines_A = []
 
-    for line in lines:
-
-        directive = line[:2]
-        assert directive in expected_directives
+    for (directive, directive_value) in lines:
 
         if directive in acceptable_characters:
-            unacceptable_characters = set(line) - acceptable_characters[directive]
+            unacceptable_characters = set(directive_value) - acceptable_characters[directive]
             if unacceptable_characters:
-                logger.warning("[A{:06}] Unacceptable characters in directive {!r}: {}.".format(oeis_id, line, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
+                logger.warning("[A{:06}] Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, directive_value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
 
         if directive == "%I":
             assert line_I is None # only one %I directive is allowed
-            line_I = line
+            line_I = directive_value
         if directive == "%S":
             assert line_S is None # only one %S directive is allowed
-            line_S = line
+            line_S = directive_value
         elif directive == "%T":
             assert line_T is None # only one %T directive is allowed
-            line_T = line
+            line_T = directive_value
         elif directive == "%U":
             assert line_U is None # only one %U directive is allowed
-            line_U = line
+            line_U = directive_value
         if directive == "%N":
             assert line_N is None # only one %N directive is allowed
-            line_N = line
+            line_N = directive_value
         elif directive == "%C":
-            lines_C.append(line) # multiple %C directives are allowed
+            lines_C.append(directive_value) # multiple %C directives are allowed
         elif directive == "%D":
-            lines_D.append(line) # multiple %D directives are allowed
+            lines_D.append(directive_value) # multiple %D directives are allowed
         elif directive == "%H":
-            lines_H.append(line) # multiple %H directives are allowed
+            lines_H.append(directive_value) # multiple %H directives are allowed
         elif directive == "%K":
             assert line_K is None # only one %K directive is allowed
-            line_K = line
+            line_K = directive_value
         elif directive == "%O":
             assert line_O is None # only one %O directive is allowed
-            line_O = line
+            line_O = directive_value
         elif directive == "%A":
-            lines_A.append(line) # multiple %A directives are allowed
+            lines_A.append(directive_value) # multiple %A directives are allowed
 
     # ========== process I directive
 
     assert (line_I is not None)
 
-    if line_I == "%I":
+    identification = line_I
+    if identification == "":
         identification = None
     else:
-        assert line_I.startswith("%I ")
-        identification = line_I[3:]
-
         for identification_pattern in identification_patterns:
             if identification_pattern.match(identification) is not None:
                 break
         else:
-            logger.warning("[A{:06}] Ill-formatted %I directive: '{}'.".format(oeis_id, line_I))
+            logger.warning("[A{:06}] Unusual %I directive value: '{}'.".format(oeis_id, identification))
 
     # ========== process S/T/U directives
 
@@ -236,17 +220,12 @@ def parse_main_content(main_content):
 
     # Synthesize numbers.
 
-    if line_S == "%S":
-        logger.warning("[A{:06}] Unusual line: '{}' (without space).".format(oeis_id, line_S))
-        line_S = "%S "
+    if line_S == "":
+        logger.warning("[A{:06}] Unusual %S directive without value.".format(oeis_id))
 
-    assert (line_S is None) or line_S.startswith("%S ")
-    assert (line_T is None) or line_T.startswith("%T ")
-    assert (line_U is None) or line_U.startswith("%U ")
-
-    S = "" if line_S is None else line_S[3:]
-    T = "" if line_T is None else line_T[3:]
-    U = "" if line_U is None else line_U[3:]
+    S = "" if line_S is None else line_S
+    T = "" if line_T is None else line_T
+    U = "" if line_U is None else line_U
 
     STU = S + T + U
 
@@ -257,28 +236,13 @@ def parse_main_content(main_content):
     # ========== process N directive
 
     assert (line_N is not None)
-    assert line_N.startswith("%N ")
+    assert line_N.startswith(" ")
 
-    name = line_N[3:]
+    name = line_N[1:]
 
     # ========== process C directive
-
-    for line_C in lines_C:
-
-        assert line_C.startswith("%C ")
-        comment = line_C[3:]
-
     # ========== process D directive
-
-    for line_D in lines_D:
-        assert line_D.startswith("%D ")
-        detailed_reference = line_D[3:]
-
     # ========== process H directive
-
-    for line_H in lines_H:
-        assert line_H.startswith("%H ")
-        link = line_H[3:]
 
     # ========== process A directive
 
@@ -291,17 +255,16 @@ def parse_main_content(main_content):
         logger.warning("[A{:06}] Missing %O directive.".format(oeis_id))
         offset = () # empty tuple
     else:
-        assert line_O.startswith("%O ")
-        offset = line_O[3:]
+        offset = line_O
 
         offset = tuple(int(o) for o in offset.split(","))
         if len(offset) != 2:
-            logger.warning("[A{:06}] Ill-formatted %O directive: {!r}.".format(oeis_id, line_O))
+            logger.warning("[A{:06}] Unusual %O directive value only has a single number: {!r}.".format(oeis_id, line_O))
 
     # ========== process K directive
 
-    assert (line_K is not None) and line_K.startswith("%K ")
-    keywords = line_K[3:]
+    assert line_K is not None
+    keywords = line_K
 
     keywords = keywords.split(",")
 
@@ -311,16 +274,16 @@ def parse_main_content(main_content):
 
     for unexpected_keyword in sorted(unexpected_keywords):
         if unexpected_keyword == "":
-            logger.warning("[A{:06}] Unexpected empty keyword in %K directive: {!r}.".format(oeis_id, line_K))
+            logger.warning("[A{:06}] Unexpected empty keyword in %K directive value: {!r}.".format(oeis_id, line_K))
         else:
-            logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive: {!r}.".format(oeis_id, unexpected_keyword, line_K))
+            logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive value: {!r}.".format(oeis_id, unexpected_keyword, line_K))
 
     # Check for duplicate keywords.
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] Keyword '{}' occurs {} times in %K directive: {!r}.".format(oeis_id, keyword, count, line_K))
+            logger.warning("[A{:06}] Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
 
     # Canonify keywords: remove empty keywords and duplicates.
     # We not sort.
