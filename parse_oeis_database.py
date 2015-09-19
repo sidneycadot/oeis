@@ -132,7 +132,7 @@ def parse_main_content(oeis_id, main_content):
             if directive_value.startswith(" "):
                 directive_value = directive_value[1:]
             else:
-                logger.warning("[A{:06}] The %{} directive should have a space before the start of its value.".format(oeis_id, directive))
+                logger.warning("[A{:06}] (P16) The %{} directive should have a space before the start of its value.".format(oeis_id, directive))
 
         new_lines.append((directive, directive_value))
 
@@ -167,7 +167,7 @@ def parse_main_content(oeis_id, main_content):
         if directive in acceptable_characters:
             unacceptable_characters = set(directive_value) - acceptable_characters[directive]
             if unacceptable_characters:
-                logger.warning("[A{:06}] Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, directive_value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
+                logger.warning("[A{:06}] (P10) Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, directive_value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
 
         if directive == 'I':
             assert line_I is None # only one %I directive is allowed
@@ -220,7 +220,7 @@ def parse_main_content(oeis_id, main_content):
             if identification_pattern.match(identification) is not None:
                 break
         else:
-            logger.warning("[A{:06}] Unusual %I directive value: '{}'.".format(oeis_id, identification))
+            logger.warning("[A{:06}] (P14) Unusual %I directive value: '{}'.".format(oeis_id, identification))
 
     # ========== process S/T/U directives
 
@@ -232,7 +232,7 @@ def parse_main_content(oeis_id, main_content):
     assert (line_U is not None) == (line_T is not None and line_T.endswith(","))
 
     if line_S == "":
-        logger.warning("[A{:06}] Unusual %S directive without value.".format(oeis_id))
+        logger.warning("[A{:06}] (P3) Unusual %S directive without value.".format(oeis_id))
 
     S = "" if line_S is None else line_S
     T = "" if line_T is None else line_T
@@ -286,19 +286,19 @@ def parse_main_content(oeis_id, main_content):
     # ========== process A directive
 
     if len(lines_A) == 0:
-        logger.warning("[A{:06}] Missing %A directive.".format(oeis_id))
+        logger.warning("[A{:06}] (P1) Missing %A directive.".format(oeis_id))
 
     # ========== process O directive
 
     if line_O is None:
-        logger.warning("[A{:06}] Missing %O directive.".format(oeis_id))
+        logger.warning("[A{:06}] (P2) Missing %O directive.".format(oeis_id))
         offset = () # empty tuple
     else:
         offset = line_O
 
         offset = tuple(int(o) for o in offset.split(","))
         if len(offset) != 2:
-            logger.warning("[A{:06}] Unusual %O directive value only has a single number: {!r}.".format(oeis_id, line_O))
+            logger.warning("[A{:06}] (P4) Unusual %O directive value only has a single number: {!r}.".format(oeis_id, line_O))
 
     # ========== process K directive
 
@@ -313,16 +313,16 @@ def parse_main_content(oeis_id, main_content):
 
     for unexpected_keyword in sorted(unexpected_keywords):
         if unexpected_keyword == "":
-            logger.warning("[A{:06}] Unexpected empty keyword in %K directive value.".format(oeis_id))
+            logger.warning("[A{:06}] (P13) Unexpected empty keyword in %K directive value.".format(oeis_id))
         else:
-            logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive value.".format(oeis_id, unexpected_keyword))
+            logger.warning("[A{:06}] (P15) Unexpected keyword '{}' in %K directive value.".format(oeis_id, unexpected_keyword))
 
     # Check for duplicate keywords.
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
+            logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
 
     # Canonify keywords: remove empty keywords and duplicates.
     # We not sort.
@@ -359,14 +359,14 @@ def parse_bfile_content(oeis_id, bfile_content):
         match = bfile_line_pattern.match(line)
 
         if match is None:
-            logger.error("[A{:06}] b-file line {} cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
+            logger.error("[A{:06}] (P12) b-file line {} cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
             break
 
         index = int(match.group(1))
         value = int(match.group(2))
 
         if len(indexes) > 0 and (index != indexes[-1] + 1):
-            logger.error("[A{:06}] b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
+            logger.error("[A{:06}] (P8) b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
             break
 
         indexes.append(index)
@@ -387,21 +387,21 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
     # Merge values obtained from S/T/U directives in main_content width b-file values.
 
     if not len(bfile_values) >= len(main_values):
-        logger.warning("[A{:06}] STU has more values than b-file (STU: {}, b-file: {}).".format(oeis_id, len(main_values), len(bfile_values)))
+        logger.warning("[A{:06}] (P7) Main file has more values than b-file (main: {}, b-file: {}).".format(oeis_id, len(main_values), len(bfile_values)))
 
     if all(bfile_values[i] == main_values[i] for i in range(min(len(main_values), len(bfile_values)))):
         # The values are fully consistent.
         # Use the one that has the most entries.
         values = bfile_values if len(bfile_values) > len(main_values) else main_values
     else:
-        logger.error("[A{:06}] STU/b-file values mismatch. Falling back on STU values.".format(oeis_id))
-        logger.info ("[A{:06}]     STU values ......... : {}...".format(oeis_id, main_values[:10]))
+        logger.error("[A{:06}] (P5) Main/b-file values mismatch. Falling back on main values.".format(oeis_id))
+        logger.info ("[A{:06}]     main values ........ : {}...".format(oeis_id, main_values[:10]))
         logger.info ("[A{:06}]     b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
 
         values = main_values  # Probably the safest choice.
 
     if (len(offset) > 0) and (offset[0] != bfile_first_index):
-            logger.error("[A{:06}] %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
+            logger.error("[A{:06}] (P6) %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
 
     indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
     if len(indexes_where_magnitude_exceeds_1) > 0:
@@ -410,7 +410,7 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
         first_index_where_magnitude_exceeds_1 = 1
 
     if len(offset) > 1 and (offset[1] != first_index_where_magnitude_exceeds_1):
-        logger.error("[A{:06}] %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
+        logger.error("[A{:06}] (P9) %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
 
     # ========== return parsed values
 

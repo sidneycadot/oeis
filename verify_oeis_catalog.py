@@ -9,8 +9,8 @@ def main():
     catalog = read_catalog_files("catalog_files/*.json")
     print("catalog has {} entries.".format(len(catalog)))
 
-    filename = "oeis_v20150915.pickle"
-    filename = "oeis_with_bfile.pickle"
+    filename = "oeis_v20150919.pickle"
+
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
 
