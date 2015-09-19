@@ -74,7 +74,7 @@ def fetch_entries_into_database(dbconn, entries):
 
     assert isinstance(entries, set)
 
-    FETCH_BATCH_SIZE  = 1000 # 200 -- 500 are reasonable
+    FETCH_BATCH_SIZE  = 1000 # 200 -- 1000 are reasonable
     NUM_PROCESSES     =   20 # 20
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
@@ -252,8 +252,9 @@ def database_update_cycle(database_filename):
                 ensure_database_schema_created(dbconn)
                 highest_oeis_id = find_highest_oeis_id()
                 make_database_complete(dbconn, highest_oeis_id)
+                #update_database_entries_for_stability()
                 update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5% of entries by score
+                update_database_entries_by_score(dbconn, highest_oeis_id //   50) # refresh 0.5% of entries by score
                 vacuum_database(dbconn)
             finally:
                 dbconn.close()
