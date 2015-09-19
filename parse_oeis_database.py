@@ -63,7 +63,7 @@ expected_directives = [
 # - Next, an optional "%A" line.
 # - Next, zero or more "%E" lines.
 
-expected_directive_order = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
+expected_directive_order = re.compile("I(?:S|ST|STU)(?:|V|VW|VWX)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
 
 identification_patterns = [re.compile(pattern) for pattern in [
             "N[0-9]{4}$",
@@ -80,63 +80,64 @@ identification_patterns = [re.compile(pattern) for pattern in [
 # http://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords
 
 expected_keywords = [
-    "allocated" #
-    "base",     # dependent on base used for sequence
-    "bref",     # sequence is too short to do any analysis with
-    "changed",  #
-    "cofr",     # a continued fraction expansion of a number
-    "cons",     # a decimal expansion of a number
-    "core",     # an important sequence
-    "dead",     # an erroneous sequence
-    "dumb",     # an unimportant sequence
-    "dupe",     # duplicate of another sequence
-    "easy",     # it is very easy to produce terms of sequence
-    "eigen",    # an eigensequence: a fixed sequence for some transformation
-    "fini",     # a finite sequence
-    "frac",     # numerators or denominators of sequence of rationals
-    "full",     # the full sequence is given
-    "hard",     # next term not known, may be hard to find. Would someone please extend this sequence?
+    "allocated", #
+    "base",      # dependent on base used for sequence
+    "bref",      # sequence is too short to do any analysis with
+    "changed",   #
+    "cofr",      # a continued fraction expansion of a number
+    "cons",      # a decimal expansion of a number
+    "core",      # an important sequence
+    "dead",      # an erroneous sequence
+    "dumb",      # an unimportant sequence
+    "dupe",      # duplicate of another sequence
+    "easy",      # it is very easy to produce terms of sequence
+    "eigen",     # an eigensequence: a fixed sequence for some transformation
+    "fini",      # a finite sequence
+    "frac",      # numerators or denominators of sequence of rationals
+    "full",      # the full sequence is given
+    "hard",      # next term not known, may be hard to find. Would someone please extend this sequence?
     "hear",
-    "less",     # reluctantly accepted
+    "less",      # reluctantly accepted
     "look",
-    "more",     # more terms are needed! would someone please extend this sequence?
-    "mult",     # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
-    "new",      # new (added within last two weeks, roughly)
-    "nice",     # an exceptionally nice sequence
-    "nonn",     # a sequence of nonnegative numbers
-    "obsc",     # obscure, better description needed
-    "sign",     # sequence contains negative numbers
-    "tabf",     # An irregular (or funny-shaped) array of numbers made into a sequence by reading it row by row
-    "tabl",     # typically a triangle of numbers, such as Pascal's triangle, made into a sequence by reading it row by row
-    "uned",     # not edited
-    "unkn",     # little is known; an unsolved problem; anyone who can find a formula or recurrence is urged to let me know.
-    "walk",     # counts walks (or self-avoiding paths)
-    "word"      # depends on words for the sequence in some language
+    "more",      # more terms are needed! would someone please extend this sequence?
+    "mult",      # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
+    "new",       # new (added within last two weeks, roughly)
+    "nice",      # an exceptionally nice sequence
+    "nonn",      # a sequence of nonnegative numbers
+    "obsc",      # obscure, better description needed
+    "sign",      # sequence contains negative numbers
+    "tabf",      # An irregular (or funny-shaped) array of numbers made into a sequence by reading it row by row
+    "tabl",      # typically a triangle of numbers, such as Pascal's triangle, made into a sequence by reading it row by row
+    "uned",      # not edited
+    "unkn",      # little is known; an unsolved problem; anyone who can find a formula or recurrence is urged to let me know.
+    "walk",      # counts walks (or self-avoiding paths)
+    "word"       # depends on words for the sequence in some language
 ]
 
 expected_keywords_set = frozenset(expected_keywords)
 
 bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 
-def parse_main_content(main_content):
+def parse_main_content(oeis_id, main_content):
 
     # Select only lines that have the proper directive format.
 
-    directive_line_pattern = "%(.) A{06d}(.*)$".format(oeis_id)
+    directive_line_pattern = "%(.) A{:06d}(.*)$".format(oeis_id)
 
     lines = re.findall(directive_line_pattern, main_content, re.MULTILINE)
 
-    stripped_lines = []
+    new_lines = []
     for (directive, directive_value) in lines:
-        if directive_value.startswith(" "):
-            directive_value = directive_value[1:]
-        stripped_directive_value = directive_value.strip()
-        if len(stripped_directive_value) != len(directive_value):
-            logger.warning("[A{:06}] Value of %{} directive ({!r}) has superfluous whitespace.".format(oeis_id, directive, directive_value)
-        stripped_lines.append((directive, stripped_directive_value))
+        if directive_value != "":
+            if directive_value.startswith(" "):
+                directive_value = directive_value[1:]
+            else:
+                logger.warning("[A{:06}] The %{} directive should have a space before the start of its value.".format(oeis_id, directive))
 
-    lines = stripped_lines
-    del stripped_lines
+        new_lines.append((directive, directive_value))
+
+    lines = new_lines
+    del new_lines
 
     # ========== check order of directives
 
@@ -150,6 +151,9 @@ def parse_main_content(main_content):
     line_S  = None
     line_T  = None
     line_U  = None
+    line_V  = None
+    line_W  = None
+    line_X  = None
     line_N  = None
     lines_C = []
     lines_D = []
@@ -165,34 +169,43 @@ def parse_main_content(main_content):
             if unacceptable_characters:
                 logger.warning("[A{:06}] Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, directive_value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
 
-        if directive == "%I":
+        if directive == 'I':
             assert line_I is None # only one %I directive is allowed
             line_I = directive_value
-        if directive == "%S":
+        if directive == 'S':
             assert line_S is None # only one %S directive is allowed
             line_S = directive_value
-        elif directive == "%T":
+        elif directive == 'T':
             assert line_T is None # only one %T directive is allowed
             line_T = directive_value
-        elif directive == "%U":
+        elif directive == 'U':
             assert line_U is None # only one %U directive is allowed
             line_U = directive_value
-        if directive == "%N":
+        if directive == 'V':
+            assert line_V is None # only one %V directive is allowed
+            line_V = directive_value
+        elif directive == 'W':
+            assert line_W is None # only one %W directive is allowed
+            line_W = directive_value
+        elif directive == 'X':
+            assert line_X is None # only one %X directive is allowed
+            line_X = directive_value
+        if directive == 'N':
             assert line_N is None # only one %N directive is allowed
             line_N = directive_value
-        elif directive == "%C":
+        elif directive == 'C':
             lines_C.append(directive_value) # multiple %C directives are allowed
-        elif directive == "%D":
+        elif directive == 'D':
             lines_D.append(directive_value) # multiple %D directives are allowed
-        elif directive == "%H":
+        elif directive == 'H':
             lines_H.append(directive_value) # multiple %H directives are allowed
-        elif directive == "%K":
+        elif directive == 'K':
             assert line_K is None # only one %K directive is allowed
             line_K = directive_value
-        elif directive == "%O":
+        elif directive == 'O':
             assert line_O is None # only one %O directive is allowed
             line_O = directive_value
-        elif directive == "%A":
+        elif directive == 'A':
             lines_A.append(directive_value) # multiple %A directives are allowed
 
     # ========== process I directive
@@ -218,8 +231,6 @@ def parse_main_content(main_content):
     assert (line_T is not None) == (line_S is not None and line_S.endswith(","))
     assert (line_U is not None) == (line_T is not None and line_T.endswith(","))
 
-    # Synthesize numbers.
-
     if line_S == "":
         logger.warning("[A{:06}] Unusual %S directive without value.".format(oeis_id))
 
@@ -231,14 +242,42 @@ def parse_main_content(main_content):
 
     stu_values = [int(value_string) for value_string in STU.split(",") if len(value_string) > 0]
 
-    assert ",".join([str(n) for n in stu_values]) == STU
+    assert ",".join([str(stu_value) for stu_value in stu_values]) == STU
+
+    assert all(stu_value >= 0 for stu_value in stu_values)
+
+    # ========== process V/W/X directives
+
+    assert (line_W is not None) == (line_V is not None and line_V.endswith(","))
+    assert (line_X is not None) == (line_W is not None and line_W.endswith(","))
+
+    V = "" if line_V is None else line_V
+    W = "" if line_W is None else line_W
+    X = "" if line_X is None else line_X
+
+    VWX = V + W + X
+
+    vwx_values = [int(value_string) for value_string in VWX.split(",") if len(value_string) > 0]
+
+    assert ",".join([str(vwx_value) for vwx_value in vwx_values]) == VWX
+
+    # ==========
+
+    if line_V is not None:
+
+        assert any(vwx_value < 0 for vwx_value in vwx_values)
+        assert (abs(vwx_value) == stu_value for (vwx_value, stu_value) in zip(vwx_values, stu_values))
+
+        assert [abs(v) for v in vwx_values] == stu_values
+
+        main_values = vwx_values
+    else:
+        main_values = stu_values
 
     # ========== process N directive
 
     assert (line_N is not None)
-    assert line_N.startswith(" ")
-
-    name = line_N[1:]
+    name = line_N
 
     # ========== process C directive
     # ========== process D directive
@@ -274,9 +313,9 @@ def parse_main_content(main_content):
 
     for unexpected_keyword in sorted(unexpected_keywords):
         if unexpected_keyword == "":
-            logger.warning("[A{:06}] Unexpected empty keyword in %K directive value: {!r}.".format(oeis_id, line_K))
+            logger.warning("[A{:06}] Unexpected empty keyword in %K directive value.".format(oeis_id))
         else:
-            logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive value: {!r}.".format(oeis_id, unexpected_keyword, line_K))
+            logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive value.".format(oeis_id, unexpected_keyword))
 
     # Check for duplicate keywords.
 
@@ -298,7 +337,7 @@ def parse_main_content(main_content):
 
     # Return the data parsed from the main_content.
 
-    return (identification, stu_values, name, offset, keywords)
+    return (identification, main_values, name, offset, keywords)
 
 def parse_bfile_content(oeis_id, bfile_content):
 
@@ -342,24 +381,24 @@ def parse_bfile_content(oeis_id, bfile_content):
 
 def parse_oeis_content(oeis_id, main_content, bfile_content):
 
-    (identification, stu_values, name, offset, keywords) = parse_main_content (oeis_id, main_content)
+    (identification, main_values, name, offset, keywords) = parse_main_content (oeis_id, main_content)
     (bfile_first_index, bfile_values)                    = parse_bfile_content(oeis_id, bfile_content)
 
     # Merge values obtained from S/T/U directives in main_content width b-file values.
 
-    if not len(bfile_values) >= len(stu_values):
-        logger.warning("[A{:06}] STU has more values than b-file (STU: {}, b-file: {}).".format(oeis_id, len(stu_values), len(bfile_values)))
+    if not len(bfile_values) >= len(main_values):
+        logger.warning("[A{:06}] STU has more values than b-file (STU: {}, b-file: {}).".format(oeis_id, len(main_values), len(bfile_values)))
 
-    if all(bfile_values[i] == stu_values[i] for i in range(min(len(stu_values), len(bfile_values)))):
+    if all(bfile_values[i] == main_values[i] for i in range(min(len(main_values), len(bfile_values)))):
         # The values are fully consistent.
         # Use the one that has the most entries.
-        values = bfile_values if len(bfile_values) > len(stu_values) else stu_values
+        values = bfile_values if len(bfile_values) > len(main_values) else main_values
     else:
         logger.error("[A{:06}] STU/b-file values mismatch. Falling back on STU values.".format(oeis_id))
-        logger.info ("[A{:06}]     STU values ......... : {}...".format(oeis_id, stu_values[:10]))
+        logger.info ("[A{:06}]     STU values ......... : {}...".format(oeis_id, main_values[:10]))
         logger.info ("[A{:06}]     b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
 
-        values = stu_values  # Probably the safest choice.
+        values = main_values  # Probably the safest choice.
 
     if (len(offset) > 0) and (offset[0] != bfile_first_index):
             logger.error("[A{:06}] %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
@@ -407,12 +446,13 @@ def process_database(database_filename):
         finally:
             dbconn.close()
 
-        logger.info("Processed {} entries in {}.".format(len(entries), timer.duration_string()))
+        logger.info("Parsed {} entries in {}.".format(len(entries), timer.duration_string()))
 
     # ========== write pickled versions.
 
     (root, ext) = os.path.splitext(database_filename)
 
+    logger.info("Writing pickle file ...")
     with start_timer() as timer:
         filename_pickle = os.path.join(root + ".pickle")
         with open(filename_pickle, "wb") as f:
@@ -422,6 +462,7 @@ def process_database(database_filename):
     WRITE_REDUCED_THRESHOLD = 10000
 
     if len(entries) > WRITE_REDUCED_THRESHOLD:
+        logger.info("Writing reduced-size pickle file ...")
         reduced_entries = entries[:WRITE_REDUCED_THRESHOLD]
         with start_timer() as timer:
             filename_pickle_reduced = root + "-{}.pickle".format(len(reduced_entries))
@@ -438,7 +479,8 @@ def main():
 
     database_filename = sys.argv[1]
 
-    logging.addLevelName(logging.DEBUG + 5, "PROGRESS")
+    logging.PROGRESS = logging.DEBUG + 5
+    logging.addLevelName(logging.PROGRESS, "PROGRESS")
 
     FORMAT = "%(asctime)-15s | %(levelname)-8s | %(lineno)-3d |%(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
