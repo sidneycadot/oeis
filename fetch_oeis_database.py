@@ -72,8 +72,8 @@ def safe_fetch_remote_oeis_entry(entry):
 
 def fetch_entries_into_database(dbconn, entries):
 
-    FETCH_BATCH_SIZE  = 1000 # 200 -- 1000 are reasonable
-    NUM_PROCESSES     =   20 # 20
+    FETCH_BATCH_SIZE  =  200 # 100 -- 1000 are reasonable
+    NUM_PROCESSES     =   10 # 10 -- 20 are reasonable
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
     entries = set(entries)
@@ -93,7 +93,7 @@ def fetch_entries_into_database(dbconn, entries):
             random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
             random_entries_to_be_fetched = random.sample(entries, random_entries_count)
 
-            logger.info("Executing fetch using {} {} for {} out of {} entries.".format(len(random_entries_to_be_fetched), NUM_PROCESSES, "worker" if NUM_PROCESSES == 1 else "workers", len(entries)))
+            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_PROCESSES, "worker" if NUM_PROCESSES == 1 else "workers", len(random_entries_to_be_fetched), len(entries)))
 
             t1 = time.time()
 
