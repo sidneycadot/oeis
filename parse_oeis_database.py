@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
     # The directive data will be either an empty string or a string
     # staring with a space character.
 
-#    directive_line_pattern = "(%.) A{oeis_id:06d}(.*)$".format(oeis_id = oeis_id)
 
 #    content = re.findall(directive_line_pattern, text, re.MULTILINE)
 
@@ -97,101 +96,60 @@ identification_patterns = [re.compile(pattern) for pattern in [
 
 # The expected keywords are documented in two places:
 #
-# https://oeis.org/eishelp1.html
-# https://oeis.org/eishelp2.html
-#
-# The second page is more elaborate. It documents the keywords "changed",
-# "hear", and "look", that the first page omits.
+# http://oeis.org/eishelp1.html
+# http://oeis.org/eishelp2.html   (more elaborate than the first; documents the keywords "changed", "hear", and "look").
+# http://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords
 
 expected_keywords = [
-    "base",  # dependent on base used for sequence
-    "bref",  # sequence is too short to do any analysis with
-    "changed",
-    "cofr",  # a continued fraction expansion of a number
-    "cons",  # a decimal expansion of a number
-    "core",  # an important sequence
-    "dead",  # an erroneous sequence
-    "dumb",  # an unimportant sequence
-    "dupe",  # duplicate of another sequence
-    "easy",  # it is very easy to produce terms of sequence
-    "eigen", # an eigensequence: a fixed sequence for some transformation
-    "fini",  # a finite sequence
-    "frac",  # numerators or denominators of sequence of rationals
-    "full",  # the full sequence is given
-    "hard",  # next term not known, may be hard to find. Would someone please extend this sequence?
+    "allocated" #
+    "base",     # dependent on base used for sequence
+    "bref",     # sequence is too short to do any analysis with
+    "changed",  #
+    "cofr",     # a continued fraction expansion of a number
+    "cons",     # a decimal expansion of a number
+    "core",     # an important sequence
+    "dead",     # an erroneous sequence
+    "dumb",     # an unimportant sequence
+    "dupe",     # duplicate of another sequence
+    "easy",     # it is very easy to produce terms of sequence
+    "eigen",    # an eigensequence: a fixed sequence for some transformation
+    "fini",     # a finite sequence
+    "frac",     # numerators or denominators of sequence of rationals
+    "full",     # the full sequence is given
+    "hard",     # next term not known, may be hard to find. Would someone please extend this sequence?
     "hear",
-    "less",  # reluctantly accepted
+    "less",     # reluctantly accepted
     "look",
-    "more",  # more terms are needed! would someone please extend this sequence?
-    "mult",  # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
-    "new",   # new (added within last two weeks, roughly)
-    "nice",  # an exceptionally nice sequence
-    "nonn",  # a sequence of nonnegative numbers
-    "obsc",  # obscure, better description needed
-    "sign",  # sequence contains negative numbers
-    "tabf",  # An irregular (or funny-shaped) array of numbers made into a sequence by reading it row by row
-    "tabl",  # typically a triangle of numbers, such as Pascal's triangle, made into a sequence by reading it row by row
-    "uned",  # not edited
-    "unkn",  # little is known; an unsolved problem; anyone who can find a formula or recurrence is urged to let me know.
-    "walk",  # counts walks (or self-avoiding paths)
-    "word",  # depends on words for the sequence in some language
-    # The following keyword occurs often but is not documented:
-    "allocated"
+    "more",     # more terms are needed! would someone please extend this sequence?
+    "mult",     # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
+    "new",      # new (added within last two weeks, roughly)
+    "nice",     # an exceptionally nice sequence
+    "nonn",     # a sequence of nonnegative numbers
+    "obsc",     # obscure, better description needed
+    "sign",     # sequence contains negative numbers
+    "tabf",     # An irregular (or funny-shaped) array of numbers made into a sequence by reading it row by row
+    "tabl",     # typically a triangle of numbers, such as Pascal's triangle, made into a sequence by reading it row by row
+    "uned",     # not edited
+    "unkn",     # little is known; an unsolved problem; anyone who can find a formula or recurrence is urged to let me know.
+    "walk",     # counts walks (or self-avoiding paths)
+    "word"      # depends on words for the sequence in some language
 ]
 
 expected_keywords_set = frozenset(expected_keywords)
 
 bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 
-def parse_bfile_content(oeis_id, bfile_content):
+def parse_main_content(main_content):
 
-    lines = bfile_content.split("\n")
+    # Select only lines that have the proper directive format:
 
-    indexes = []
-    values = []
+    directive_line_pattern = "(%.) A{06d}(.*)$".format(oeis_id)
 
-    for (line_nr, line) in enumerate(lines, 1):
+    lines = re.findall(directive_line_pattern, main_content, re.MULTILINE)
 
-        if line.startswith("#"):
-            continue
-
-        line = line.strip()
-
-        if len(line) == 0:
-            continue
-
-        match = bfile_line_pattern.match(line)
-
-        if match is None:
-            logger.error("[A{:06}] b-file line {} cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
-            break
-
-        index = int(match.group(1))
-        value = int(match.group(2))
-
-        if len(indexes) > 0 and (index != indexes[-1] + 1):
-            logger.error("[A{:06}] b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
-            break
-
-        indexes.append(index)
-
-        values.append(value)
-
-    assert len(indexes) == len(values)
-
-    first_index = indexes[0] if len(indexes) > 0 else None
-
-    return (first_index, values)
-
-def parse_oeis_content(oeis_id, main_content, bfile_content):
+    lines = [directive + directive_data for (directive, directive_data) in lines]
 
     # ========== check order of directives
-
-    lines = main_content.split("\n")
-
-    for line in lines:
-        assert len(line) >= 2
-        assert line[0] == "%"
 
     directive_order = "".join(line[1] for line in lines)
 
@@ -276,7 +234,7 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
     assert (line_T is not None) == (line_S is not None and line_S.endswith(","))
     assert (line_U is not None) == (line_T is not None and line_T.endswith(","))
 
-    # Synthesize numbers
+    # Synthesize numbers.
 
     if line_S == "%S":
         logger.warning("[A{:06}] Unusual line: '{}' (without space).".format(oeis_id, line_S))
@@ -300,7 +258,6 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
 
     assert (line_N is not None)
     assert line_N.startswith("%N ")
-
 
     name = line_N[3:]
 
@@ -348,7 +305,7 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
 
     keywords = keywords.split(",")
 
-    # Check for unexpected keywords
+    # Check for unexpected keywords.
 
     unexpected_keywords = set(keywords) - expected_keywords_set
 
@@ -358,41 +315,88 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
         else:
             logger.warning("[A{:06}] Unexpected keyword '{}' in %K directive: {!r}.".format(oeis_id, unexpected_keyword, line_K))
 
-    # Check for duplicate keywords
+    # Check for duplicate keywords.
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
             logger.warning("[A{:06}] Keyword '{}' occurs {} times in %K directive: {!r}.".format(oeis_id, keyword, count, line_K))
 
-    # Canonify keywords: remove empty keywords and duplicates, and sort.
+    # Canonify keywords: remove empty keywords and duplicates.
+    # We not sort.
 
-    keywords = sorted(set(k for k in keywords if k != ""))
+    canon = []
+    for keyword in keywords:
+        if not(keyword == "" or keyword in canon):
+            canon.append(keyword)
 
-    # Some checks on the keywords themselves
+    keywords = canon
+    del canon
 
-    if "full" in keywords and "fini" not in keywords:
-        logger.warning("[A{:06}] Keyword 'full' occurs without keyword 'fini'.".format(oeis_id))
+    # Return the data parsed from the main_content.
 
-    if "tabl" in keywords and "tabf" in keywords:
-        logger.warning("[A{:06}] Keywords 'tabl' and 'tabf' occur together.".format(oeis_id))
+    return (identification, stu_values, name, offset, keywords)
 
-    # ========== process b-file, a file that lists (index, value) pairs, and merge it with the content obtained from the %S, %T, and %U lines.
+def parse_bfile_content(oeis_id, bfile_content):
 
-    (bfile_first_index, bfile_values) = parse_bfile_content(oeis_id, bfile_content)
+    lines = bfile_content.split("\n")
+
+    indexes = []
+    values = []
+
+    for (line_nr, line) in enumerate(lines, 1):
+
+        if line.startswith("#"):
+            continue
+
+        line = line.strip()
+
+        if len(line) == 0:
+            continue
+
+        match = bfile_line_pattern.match(line)
+
+        if match is None:
+            logger.error("[A{:06}] b-file line {} cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
+            break
+
+        index = int(match.group(1))
+        value = int(match.group(2))
+
+        if len(indexes) > 0 and (index != indexes[-1] + 1):
+            logger.error("[A{:06}] b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
+            break
+
+        indexes.append(index)
+
+        values.append(value)
+
+    assert len(indexes) == len(values)
+
+    first_index = indexes[0] if len(indexes) > 0 else None
+
+    return (first_index, values)
+
+def parse_oeis_content(oeis_id, main_content, bfile_content):
+
+    (identification, stu_values, name, offset, keywords) = parse_main_content (oeis_id, main_content)
+    (bfile_first_index, bfile_values)                    = parse_bfile_content(oeis_id, bfile_content)
+
+    # Merge values obtained from S/T/U directives in main_content width b-file values.
 
     if not len(bfile_values) >= len(stu_values):
         logger.warning("[A{:06}] STU has more values than b-file (STU: {}, b-file: {}).".format(oeis_id, len(stu_values), len(bfile_values)))
 
     if all(bfile_values[i] == stu_values[i] for i in range(min(len(stu_values), len(bfile_values)))):
-        # The values are fully consistent. Use the longest available "values" array.
+        # The values are fully consistent.
+        # Use the one that has the most entries.
         values = bfile_values if len(bfile_values) > len(stu_values) else stu_values
     else:
-        logger.error("[A{:06}] STU/b-file values mismatch:".format(oeis_id))
-        logger.info("[A{:06}]   STU values ......... : {}...".format(oeis_id, stu_values[:10]))
-        logger.info("[A{:06}]   b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
+        logger.error("[A{:06}] STU/b-file values mismatch. Falling back on STU values.".format(oeis_id))
+        logger.info ("[A{:06}]     STU values ......... : {}...".format(oeis_id, stu_values[:10]))
+        logger.info ("[A{:06}]     b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
 
-        values = stu_values  # safe choice
+        values = stu_values  # Probably the safest choice.
 
     if (len(offset) > 0) and (offset[0] != bfile_first_index):
             logger.error("[A{:06}] %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
@@ -404,7 +408,7 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
         first_index_where_magnitude_exceeds_1 = 1
 
     if len(offset) > 1 and (offset[1] != first_index_where_magnitude_exceeds_1):
-        logger.error("[A{:06}] %O directive claims first index where magnitude exceeds 1 is {}, but b-file has {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
+        logger.error("[A{:06}] %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
 
     # ========== return parsed values
 
@@ -416,7 +420,7 @@ def process_database(database_filename):
         logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename))
         return
 
-    # ========== fetch database entries, ordered by oeis_id.
+    # ========== fetch and process database entries, ordered by oeis_id.
 
     entries = []
 
@@ -432,7 +436,7 @@ def process_database(database_filename):
                         break
                     (oeis_id, main_content, bfile_content) = oeis_entry
                     if oeis_id % 10 == 0:
-                        logger.log(logging.INFO - 5, "Processing [A{:06}] ...".format(oeis_id))
+                        logger.log(logging.PROGRESS, "Processing [A{:06}] ...".format(oeis_id))
                     entry = parse_oeis_content(oeis_id, main_content, bfile_content)
                     entries.append(entry)
             finally:
@@ -472,6 +476,7 @@ def main():
     database_filename = sys.argv[1]
 
     logging.addLevelName(logging.DEBUG + 5, "PROGRESS")
+
     FORMAT = "%(asctime)-15s | %(levelname)-8s | %(lineno)-3d |%(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 

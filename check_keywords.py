@@ -9,7 +9,7 @@ def make_pairs(keywords):
 def main():
     filename = "oeis_v20150915.pickle"
     filename = "oeis_with_bfile.pickle"
-    #filename = "oeis_with_bfile-10000.pickle"
+    filename = "oeis_with_bfile-10000.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
