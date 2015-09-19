@@ -72,11 +72,11 @@ def safe_fetch_remote_oeis_entry(entry):
 
 def fetch_entries_into_database(dbconn, entries):
 
-    assert isinstance(entries, set)
-
     FETCH_BATCH_SIZE  = 1000 # 200 -- 1000 are reasonable
     NUM_PROCESSES     =   20 # 20
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
+
+    entries = set(entries)
 
     if NUM_PROCESSES > 1:
         pool = multiprocessing.Pool(NUM_PROCESSES)
@@ -183,33 +183,49 @@ def make_database_complete(dbconn, highest_oeis_id):
     dbcursor = dbconn.cursor()
     try:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
-        entries_in_local_database = dbcursor.fetchall()
+        present_entries = dbcursor.fetchall()
     finally:
         dbcursor.close()
 
-    entries_in_local_database = set(oeis_id for (oeis_id, ) in entries_in_local_database)
-    logger.info("Entries present in local database: {}.".format(len(entries_in_local_database)))
+    present_entries = [oeis_id for (oeis_id, ) in present_entries]
+    logger.info("Entries present in local database: {}.".format(len(present_entries)))
 
-    all_entries = set(range(1, highest_oeis_id + 1))
+    all_entries = range(1, highest_oeis_id + 1)
 
-    missing_entries = set(all_entries) - entries_in_local_database
+    missing_entries = set(all_entries) - set(present_entries)
     logger.info("Missing entries to be fetched: {}.".format(len(missing_entries)))
 
     fetch_entries_into_database(dbconn, missing_entries)
+
+def update_database_entries_for_nonzero_time_window(dbconn):
+
+    dbcursor = dbconn.cursor()
+    try:
+        dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
+        zero_timewindow_entries = dbcursor.fetchall()
+    finally:
+        dbcursor.close()
+
+    zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
+
+    logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
+
+    fetch_entries_into_database(dbconn, zero_timewindow_entries)
 
 def update_database_entries_randomly(dbconn, howmany):
 
     dbcursor = dbconn.cursor()
     try:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
-        all_entries = dbcursor.fetchall()
+        present_entries = dbcursor.fetchall()
     finally:
         dbcursor.close()
 
-    all_entries = [oeis_id for (oeis_id, ) in all_entries]
+    present_entries = [oeis_id for (oeis_id, ) in present_entries]
 
-    random_entries_count = min(howmany, len(all_entries))
-    random_entries = set(random.sample(all_entries, random_entries_count))
+    random_entries_count = min(howmany, len(present_entries))
+
+    random_entries = random.sample(present_entries, random_entries_count)
 
     logger.info("Random entries in local database selected for refresh: {}.".format(len(random_entries)))
 
@@ -227,7 +243,7 @@ def update_database_entries_by_score(dbconn, howmany):
     finally:
         dbcursor.close()
 
-    highest_score_entries = set(oeis_id for (oeis_id, ) in highest_score_entries)
+    highest_score_entries = [oeis_id for (oeis_id, ) in highest_score_entries]
     logger.info("Highest-score entries in local database selected for refresh: {}.".format(len(highest_score_entries)))
 
     fetch_entries_into_database(dbconn, highest_score_entries)
@@ -247,14 +263,13 @@ def database_update_cycle(database_filename):
         with start_timer() as timer:
 
             dbconn = sqlite3.connect(database_filename)
-
             try:
                 ensure_database_schema_created(dbconn)
                 highest_oeis_id = find_highest_oeis_id()
-                make_database_complete(dbconn, highest_oeis_id)
-                #update_database_entries_for_stability()
-                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1% of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //   50) # refresh 0.5% of entries by score
+                make_database_complete(dbconn, highest_oeis_id)                   # make sure we have all entries (full fetch on first run)
+                update_database_entries_for_nonzero_time_window(dbconn)           # make sure we have t1 != t2 for all entries (full fetch on first run)
+                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1 % of entries randomly
+                update_database_entries_by_score(dbconn, highest_oeis_id //   50) # refresh 2.0 % of entries by score
                 vacuum_database(dbconn)
             finally:
                 dbconn.close()
