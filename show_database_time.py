@@ -22,7 +22,7 @@ def show_entries(database_filename):
     try:
         dbcursor = dbconn.cursor()
         try:
-            query = "SELECT oeis_id, t_first_fetch, t_most_recent FROM oeis_entries;"
+            query = "SELECT oeis_id, t1, t2 FROM oeis_entries;"
             dbcursor.execute(query)
             data = dbcursor.fetchall()
         finally:
