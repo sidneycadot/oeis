@@ -72,8 +72,8 @@ def safe_fetch_remote_oeis_entry(entry):
 
 def fetch_entries_into_database(dbconn, entries):
 
-    FETCH_BATCH_SIZE  =  200 # 100 -- 1000 are reasonable
-    NUM_PROCESSES     =   10 # 10 -- 20 are reasonable
+    FETCH_BATCH_SIZE  =  500 # 100 -- 1000 are reasonable
+    NUM_PROCESSES     =   20 # 10 -- 20 are reasonable
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
     entries = set(entries)
@@ -269,7 +269,7 @@ def database_update_cycle(database_filename):
                 make_database_complete(dbconn, highest_oeis_id)                   # make sure we have all entries (full fetch on first run)
                 update_database_entries_for_nonzero_time_window(dbconn)           # make sure we have t1 != t2 for all entries (full fetch on first run)
                 update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1 % of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //   50) # refresh 2.0 % of entries by score
+                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5 % of entries by score
                 vacuum_database(dbconn)
             finally:
                 dbconn.close()
