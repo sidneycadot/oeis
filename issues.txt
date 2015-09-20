@@ -41,7 +41,7 @@ If there are any more combinations of keywords that should trigger warnings I'd 
 
 2015-09-17, 17:20 (CG)
 
-==> Keywords "recycled", "allocated", and "allocating" should never appear with other keywords. 
+==> Keywords "recycled", "allocated", and "allocating" should never appear with other keywords.
 ==> keyword:dead should also appear alone, but in practice there are cases where it does not (I count 54).
 ==> kw:nice should never appear with kw:less.
 ==> kw:easy should never appear with kw:hard.
@@ -75,3 +75,4 @@ I believe all the problems you identified that involved b-files (P5, P6, P7, P8,
 If you can provide details for other similar problems, I'd be happy to work on them as time permits.
 
 
+Negative values do occur, so keyword should be 'sign' rather than 'nonn'.

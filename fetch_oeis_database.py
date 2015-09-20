@@ -6,9 +6,9 @@ import datetime
 import time
 import sqlite3
 import random
-import multiprocessing
 import logging
 import lzma
+import concurrent.futures
 
 from timer import start_timer
 from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
@@ -82,11 +82,7 @@ def fetch_entries_into_database(dbconn, entries):
 
     entries = set(entries)
 
-    if NUM_WORKERS > 1:
-        pool = multiprocessing.Pool(NUM_WORKERS)
-    else:
-        pool = None
-    try:
+    with concurrent.futures.ThreadPoolExecutor(NUM_WORKERS) as executor:
 
         tStart = time.time()
         nStart = len(entries)
@@ -100,12 +96,8 @@ def fetch_entries_into_database(dbconn, entries):
 
             t1 = time.time()
 
-            if pool is None:
-                # execute fetches sequentially
-                results = [safe_fetch_remote_oeis_entry(entry) for entry in random_entries_to_be_fetched]
-            else:
-                # execute fetches in parallel
-                results = pool.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched)
+            # execute fetches in parallel
+            results = list(executor.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched))
 
             t2 = time.time()
 
@@ -175,11 +167,6 @@ def fetch_entries_into_database(dbconn, entries):
             if len(entries) > 0:
                 logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
                 time.sleep(SLEEP_AFTER_BATCH)
-
-    finally:
-        if pool is not None:
-            pool.close()
-            pool.join()
 
 def make_database_complete(dbconn, highest_oeis_id):
 

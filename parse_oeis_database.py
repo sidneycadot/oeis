@@ -23,31 +23,32 @@ logger = logging.getLogger(__name__)
 # with the signed entries given as %V, %W, %X. However, in the versions we downloaded, %S, %T, and %U
 # are signed, and %V, %W, and %X are never present.
 
-expected_directives = [
-    "%I", # Identification Line                                     (REQUIRED)
-    "%S", # Beginning f the sequence (line 1 of 3)                  (REQUIRED)
-    "%T", # Beginning f the sequence (line 2 of 3)
-    "%U", # Beginning f the sequence (line 3 of 3)
-    "%N", # Name of sequence                                        (REQUIRED)
-    "%D", # Detailed references
-    "%H", # Links related to this sequence
-    "%F", # Formula
-    "%Y", # Cross-references to other sequences
-    "%A", # Author, submitter, or other Authority                   (REQUIRED)
-    "%O", # Offset a, b                                             (REQUIRED)
-    "%p", # Computer program to produce the sequence (Maple)
-    "%t", # Computer program to produce the sequence (Mathematica)
-    "%o", # Computer program to produce the sequence (other computer language)
-    "%E", # Extensions and errors
-    "%e", # Examples
-    "%K", # Keywords                                                (REQUIRED)
-    "%C"  # Comments
-]
+#expected_directives = [
+#    "%I", # Identification Line                                     (REQUIRED)
+#    "%S", # Beginning f the sequence (line 1 of 3)                  (REQUIRED)
+#    "%T", # Beginning f the sequence (line 2 of 3)
+#    "%U", # Beginning f the sequence (line 3 of 3)
+#    "%N", # Name of sequence                                        (REQUIRED)
+#    "%D", # Detailed references
+#    "%H", # Links related to this sequence
+#    "%F", # Formula
+#    "%Y", # Cross-references to other sequences
+#    "%A", # Author, submitter, or other Authority                   (REQUIRED)
+#    "%O", # Offset a, b                                             (REQUIRED)
+#    "%p", # Computer program to produce the sequence (Maple)
+#    "%t", # Computer program to produce the sequence (Mathematica)
+#    "%o", # Computer program to produce the sequence (other computer language)
+#    "%E", # Extensions and errors
+#    "%e", # Examples
+#    "%K", # Keywords                                                (REQUIRED)
+#    "%C"  # Comments
+#]
 
 # The order of expected directives, for any given entry is as follows:
 #
 # - First, a single "%I" entry.
 # - Next, either a single "%S" line, an "%S" line followed by a "%T" line, or an "%S" line followed by a "%T" line followed by a "%U" line.
+# - Next, either a single "%V" line, a "%V" line followed by a "%W" line, or a "%V" line followed by a "%W" line followed by an "%X" line.
 # - Next, a single "%N" line.
 # - Next, zero or more "%C" lines.
 # - Next, zero or more "%D" lines.
@@ -76,11 +77,12 @@ identification_patterns = [re.compile(pattern) for pattern in [
 # The expected keywords are documented in two places:
 #
 # http://oeis.org/eishelp1.html
-# http://oeis.org/eishelp2.html   (more elaborate than the first; documents the keywords "changed", "hear", and "look").
-# http://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords
+# http://oeis.org/eishelp2.html                                (more elaborate than the first; documents the keywords "changed", "hear", and "look").
+# http://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords   (more up-to-date).
 
 expected_keywords = [
     "allocated", #
+    "allocating", #
     "base",      # dependent on base used for sequence
     "bref",      # sequence is too short to do any analysis with
     "changed",   #
@@ -105,6 +107,7 @@ expected_keywords = [
     "nice",      # an exceptionally nice sequence
     "nonn",      # a sequence of nonnegative numbers
     "obsc",      # obscure, better description needed
+    "probation",
     "sign",      # sequence contains negative numbers
     "tabf",      # An irregular (or funny-shaped) array of numbers made into a sequence by reading it row by row
     "tabl",      # typically a triangle of numbers, such as Pascal's triangle, made into a sequence by reading it row by row
@@ -172,7 +175,7 @@ def parse_main_content(oeis_id, main_content):
         if directive == 'I':
             assert line_I is None # only one %I directive is allowed
             line_I = directive_value
-        if directive == 'S':
+        elif directive == 'S':
             assert line_S is None # only one %S directive is allowed
             line_S = directive_value
         elif directive == 'T':
@@ -190,7 +193,7 @@ def parse_main_content(oeis_id, main_content):
         elif directive == 'X':
             assert line_X is None # only one %X directive is allowed
             line_X = directive_value
-        if directive == 'N':
+        elif directive == 'N':
             assert line_N is None # only one %N directive is allowed
             line_N = directive_value
         elif directive == 'C':
@@ -482,11 +485,13 @@ def main():
     logging.PROGRESS = logging.DEBUG + 5
     logging.addLevelName(logging.PROGRESS, "PROGRESS")
 
-    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(lineno)-3d |%(message)s"
+    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
     try:
-        process_database(database_filename)
+        with start_timer() as timer:
+            process_database(database_filename)
+            logger.info("Database processing completed in {}.".format(timer.duration_string()))
     finally:
         logging.shutdown()
 
