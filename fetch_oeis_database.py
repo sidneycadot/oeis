@@ -77,16 +77,15 @@ def safe_fetch_remote_oeis_entry(entry):
 def fetch_entries_into_database(dbconn, entries):
 
     FETCH_BATCH_SIZE  =  500 # 100 -- 1000 are reasonable
-    NUM_PROCESSES     =   20 # 10 -- 20 are reasonable
+    NUM_WORKERS       =   20 # 10 -- 20 are reasonable
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
     entries = set(entries)
 
-    if NUM_PROCESSES > 1:
-        pool = multiprocessing.Pool(NUM_PROCESSES)
+    if NUM_WORKERS > 1:
+        pool = multiprocessing.Pool(NUM_WORKERS)
     else:
         pool = None
-
     try:
 
         tStart = time.time()
@@ -97,7 +96,7 @@ def fetch_entries_into_database(dbconn, entries):
             random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
             random_entries_to_be_fetched = random.sample(entries, random_entries_count)
 
-            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_PROCESSES, "worker" if NUM_PROCESSES == 1 else "workers", len(random_entries_to_be_fetched), len(entries)))
+            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_WORKERS, "worker" if NUM_WORKERS == 1 else "workers", len(random_entries_to_be_fetched), len(entries)))
 
             t1 = time.time()
 
