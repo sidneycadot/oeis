@@ -1,17 +1,14 @@
 #! /usr/bin/env python3
 
-from __future__ import print_function
-from catalog import read_catalog_files
+import logging
 import pickle
+from catalog import read_catalog_files
 
-def main():
+def verify_catalog(pickle_filename):
 
     catalog = read_catalog_files("catalog_files/*.json")
-    print("catalog has {} entries.".format(len(catalog)))
 
-    filename = "oeis_v20150919.pickle"
-
-    with open(filename, "rb") as f:
+    with open(pickle_filename, "rb") as f:
         oeis_entries = pickle.load(f)
 
     print("pickled OEIS database has {} entries.".format(len(oeis_entries)))
@@ -39,6 +36,19 @@ def main():
             print("[A{:06d}] Finite sequence: {}".format(oeis_id, oeis_entry.keywords))
             if sequence.last_index is None:
                 print("                              INFINITE IN CATALOG")
+
+def main():
+
+    pickle_filename = "oeis_v20150919.pickle"
+    pickle_filename = "oeis_with_bfile.pickle"
+
+    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
+    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+
+    try:
+        verify_catalog(pickle_filename)
+    finally:
+        logging.shutdown()
 
 if __name__ == "__main__":
     main()
