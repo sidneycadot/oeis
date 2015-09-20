@@ -138,7 +138,7 @@ def process_responses(dbconn, responses):
             if previous_content is None:
                 # The oeis_id does not occur in the database yet.
                 # We will insert it as a new entry.
-                query = """INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"""
+                query = "INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
                 dbcursor.execute(query, (response.oeis_id, response.timestamp, response.timestamp, response.main_content, response.bfile_content))
                 countNewEntries += 1
             elif previous_content != (response.main_content, response.bfile_content):
@@ -185,28 +185,22 @@ def fetch_entries_into_database(dbconn, entries):
 
     entries = set(entries) # make a copy, and ensure it is a set.
 
-    with concurrent.futures.ThreadPoolExecutor(NUM_WORKERS) as executor:
-
-        tStart = time.time()
-        nStart = len(entries)
+    with start_timer(len(entries)) as timer, concurrent.futures.ThreadPoolExecutor(NUM_WORKERS) as executor:
 
         while len(entries) > 0:
 
-            random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
-            random_entries_to_be_fetched = random.sample(entries, random_entries_count)
+            batch_size = min(FETCH_BATCH_SIZE, len(entries))
 
-            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_WORKERS, "worker" if NUM_WORKERS == 1 else "workers", len(random_entries_to_be_fetched), len(entries)))
+            batch = random.sample(entries, random_entries_count)
 
-            t1 = time.time()
+            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_WORKERS, "worker" if NUM_WORKERS == 1 else "workers", batch_size, len(entries)))
 
-            # Execute fetches in parallel.
+            with start_timer() as batch_timer:
 
-            responses = list(executor.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched))
+                # Execute fetches in parallel.
+                responses = list(executor.map(safe_fetch_remote_oeis_entry, batch))
 
-            t2 = time.time()
-
-            duration = (t2 - t1)
-            logger.info("{} fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
+                logger.info("{} fetches took {} seconds ({:.3f} fetches/second).".format(batch_size, batch_timer.duration_as_string(), batch_size / batch_timer.duration()))
 
             # Process the responses by updating the database.
 
@@ -216,16 +210,14 @@ def fetch_entries_into_database(dbconn, entries):
 
             # Calculate and show estimated-time-to-completion.
 
-            tCurrent = time.time()
-            nCurrent = len(entries)
-
-            ETC = (tCurrent - tStart) * nCurrent / (nStart - nCurrent)
-            logger.info("Estimated time to completion: {:.1f} minutes.".format(ETC / 60.0))
+            logger.info("Estimated time to completion: {}.".format(timer.etc_string(work_remaining = len(entries))))
 
             # Sleep if we need to fetch more
             if len(entries) > 0:
                 logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
                 time.sleep(SLEEP_AFTER_BATCH)
+
+        logger.info("Fetched {} entries in {}.".format(nStart, timer.duration_string())
 
 def make_database_complete(dbconn, highest_oeis_id):
     """Fetch all entries from the remote OEIS database that are not yet present in the local SQLite database."""
