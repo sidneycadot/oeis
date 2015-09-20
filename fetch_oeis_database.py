@@ -1,5 +1,8 @@
 #! /usr/bin/env python3
 
+import os
+import glob
+import datetime
 import time
 import sqlite3
 import random
@@ -73,8 +76,8 @@ def safe_fetch_remote_oeis_entry(entry):
 
 def fetch_entries_into_database(dbconn, entries):
 
-    FETCH_BATCH_SIZE  =  200 # 100 -- 1000 are reasonable
-    NUM_PROCESSES     =   10 # 10 -- 20 are reasonable
+    FETCH_BATCH_SIZE  =  500 # 100 -- 1000 are reasonable
+    NUM_PROCESSES     =   20 # 10 -- 20 are reasonable
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
     entries = set(entries)
@@ -198,21 +201,6 @@ def make_database_complete(dbconn, highest_oeis_id):
 
     fetch_entries_into_database(dbconn, missing_entries)
 
-def update_database_entries_for_nonzero_time_window(dbconn):
-
-    dbcursor = dbconn.cursor()
-    try:
-        dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
-        zero_timewindow_entries = dbcursor.fetchall()
-    finally:
-        dbcursor.close()
-
-    zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
-
-    logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
-
-    fetch_entries_into_database(dbconn, zero_timewindow_entries)
-
 def update_database_entries_randomly(dbconn, howmany):
 
     dbcursor = dbconn.cursor()
@@ -249,7 +237,23 @@ def update_database_entries_by_score(dbconn, howmany):
 
     fetch_entries_into_database(dbconn, highest_score_entries)
 
+def update_database_entries_for_nonzero_time_window(dbconn):
+
+    dbcursor = dbconn.cursor()
+    try:
+        dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
+        zero_timewindow_entries = dbcursor.fetchall()
+    finally:
+        dbcursor.close()
+
+    zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
+
+    logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
+
+    fetch_entries_into_database(dbconn, zero_timewindow_entries)
+
 def vacuum_database(dbconn):
+
     with start_timer() as timer:
         logger.info("Initiating VACUUM on database ...")
         dbconn.execute("VACUUM;")
@@ -277,6 +281,8 @@ def consolidate_database_daily(database_filename):
 
     with start_timer() as timer:
 
+        logger.info("Consolidating database to '{}' ...".format(xz_filename))
+
         # Vacuum the database
         dbconn = sqlite3.connect(database_filename)
         try:
@@ -290,7 +296,7 @@ def consolidate_database_daily(database_filename):
         # Remove stale files.
         stale_files = [filename for filename in glob.glob("oeis_v????????.sqlite3.xz") if filename != xz_filename]
         for filename in stale_files:
-            log.info("Removing stale consolidated file '{}' ...", 
+            logger.info("Removing stale consolidated file '{}' ...".format(filename))
             os.remove(filename)
 
         logger.info("Consolidating data took {}.".format(timer.duration_string()))
@@ -303,18 +309,19 @@ def database_update_cycle(database_filename):
 
         with start_timer() as timer:
 
+            highest_oeis_id = find_highest_oeis_id() # check OEIS server for highest entry ID.
+
             dbconn = sqlite3.connect(database_filename)
             try:
                 ensure_database_schema_created(dbconn)
-                highest_oeis_id = find_highest_oeis_id()
                 make_database_complete(dbconn, highest_oeis_id)                   # make sure we have all entries (full fetch on first run)
-                update_database_entries_for_nonzero_time_window(dbconn)           # make sure we have t1 != t2 for all entries (full fetch on first run)
                 update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1 % of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //  100) # refresh 1.0 % of entries by score
+                update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5 % of entries by score
+                update_database_entries_for_nonzero_time_window(dbconn)           # make sure we have t1 != t2 for all entries (full fetch on first run)
             finally:
                 dbconn.close()
 
-            consolidate_database_daily()
+            consolidate_database_daily(database_filename)
 
             logger.info("Full database update cycle took {}.".format(timer.duration_string()))
 
