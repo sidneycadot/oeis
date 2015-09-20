@@ -5,6 +5,7 @@ import sqlite3
 import random
 import multiprocessing
 import logging
+import lzma
 
 from timer import start_timer
 from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
@@ -254,6 +255,46 @@ def vacuum_database(dbconn):
         dbconn.execute("VACUUM;")
         logger.info("VACUUM done in {}.".format(timer.duration_string()))
 
+def compress_file(from_filename, to_filename):
+
+    PRESET = 9 # level 9 without 'extra' works best on our data.
+
+    with start_timer() as timer, open(from_filename, "rb") as f:
+        logger.info("Reading uncompressed data from '{}' ...".format(from_filename))
+        data = f.read()
+        logger.info("Reading uncompressed data took {}.".format(timer.duration_string()))
+
+    with start_timer() as timer, lzma.open(to_filename, "wb", format = lzma.FORMAT_XZ, check = lzma.CHECK_CRC64, preset = PRESET) as f:
+        logger.info("Writing compressed data to '{}' ...".format(to_filename))
+        f.write(data)
+        logger.info("Writing compressed data took {}.".format(timer.duration_string()))
+
+def consolidate_database_daily(database_filename):
+
+    xz_filename = datetime.datetime.now().strftime("oeis_v%Y%m%d.sqlite3.xz")
+    if os.path.exists(xz_filename):
+        return # file already exists.
+
+    with start_timer() as timer:
+
+        # Vacuum the database
+        dbconn = sqlite3.connect(database_filename)
+        try:
+            vacuum_database(dbconn)
+        finally:
+            dbconn.close()
+
+        # Create the xz file.
+        compress_file(database_filename, xz_filename)
+
+        # Remove stale files.
+        stale_files = [filename for filename in glob.glob("oeis_v????????.sqlite3.xz") if filename != xz_filename]
+        for filename in stale_files:
+            log.info("Removing stale consolidated file '{}' ...", 
+            os.remove(filename)
+
+        logger.info("Consolidating data took {}.".format(timer.duration_string()))
+
 def database_update_cycle(database_filename):
 
     while True:
@@ -270,9 +311,10 @@ def database_update_cycle(database_filename):
                 update_database_entries_for_nonzero_time_window(dbconn)           # make sure we have t1 != t2 for all entries (full fetch on first run)
                 update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1 % of entries randomly
                 update_database_entries_by_score(dbconn, highest_oeis_id //  200) # refresh 0.5 % of entries by score
-                vacuum_database(dbconn)
             finally:
                 dbconn.close()
+
+            consolidate_database_daily()
 
             logger.info("Full database update cycle took {}.".format(timer.duration_string()))
 
