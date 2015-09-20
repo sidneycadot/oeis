@@ -191,7 +191,7 @@ def fetch_entries_into_database(dbconn, entries):
 
             batch_size = min(FETCH_BATCH_SIZE, len(entries))
 
-            batch = random.sample(entries, random_entries_count)
+            batch = random.sample(entries, batch_size)
 
             logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_WORKERS, "worker" if NUM_WORKERS == 1 else "workers", batch_size, len(entries)))
 
@@ -200,7 +200,7 @@ def fetch_entries_into_database(dbconn, entries):
                 # Execute fetches in parallel.
                 responses = list(executor.map(safe_fetch_remote_oeis_entry, batch))
 
-                logger.info("{} fetches took {} seconds ({:.3f} fetches/second).".format(batch_size, batch_timer.duration_as_string(), batch_size / batch_timer.duration()))
+                logger.info("{} fetches took {} seconds ({:.3f} fetches/second).".format(batch_size, batch_timer.duration_string(), batch_size / batch_timer.duration()))
 
             # Process the responses by updating the database.
 
@@ -217,7 +217,7 @@ def fetch_entries_into_database(dbconn, entries):
                 logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
                 time.sleep(SLEEP_AFTER_BATCH)
 
-        logger.info("Fetched {} entries in {}.".format(nStart, timer.duration_string())
+        logger.info("Fetched {} entries in {}.".format(timer.total_work, timer.duration_string()))
 
 def make_database_complete(dbconn, highest_oeis_id):
     """Fetch all entries from the remote OEIS database that are not yet present in the local SQLite database."""
