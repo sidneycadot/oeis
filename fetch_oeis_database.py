@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 def ensure_database_schema_created(dbconn):
 
+    # Note that the database schema has the "IF NOT EXISTS" clause,
+    # which ensures that the statement will be ignored if the table is already present.
+
     schema = """
              CREATE TABLE IF NOT EXISTS oeis_entries (
                  oeis_id       INTEGER  PRIMARY KEY NOT NULL, -- OEIS ID number.
@@ -27,15 +30,21 @@ def ensure_database_schema_created(dbconn):
              );
              """
 
+    # Remove the first 13 characters of each line of the SQL statement above,
+    # as well as the first and last lines.
+
     schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+
+    # Execute the schema creation statement.
+
     dbconn.execute(schema)
 
 def find_highest_oeis_id():
 
     SLEEP_AFTER_FAILURE = 5.0
 
-    success_id =  262000 # we know a-priori that this entry exists
-    failure_id = 1000000 # we know a-priori that this entry does not exist
+    success_id =  262000 # We know a-priori that this entry exists.
+    failure_id = 1000000 # We know a-priori that this entry does not exist.
 
     # Do a binary search, looking for the success/failure boundary.
     while success_id + 1 != failure_id:
@@ -66,7 +75,7 @@ def find_highest_oeis_id():
 
 def safe_fetch_remote_oeis_entry(entry):
     # Intercepts and reports any exceptions.
-    # The (parallel or sequential) map must run to completion.
+    # In case of an exception, a log message is generated, and None is returned.
     try:
         result = fetch_remote_oeis_entry(entry, True)
     except BaseException as exception:
@@ -74,13 +83,69 @@ def safe_fetch_remote_oeis_entry(entry):
         result = None
     return result
 
+def process_responses(dbconn, responses):
+    # Process the fetch responses.
+
+    countFailures         = 0
+    countNewEntries       = 0
+    countIdenticalEntries = 0
+    countUpdatedEntries   = 0
+
+    processed_entries = set()
+
+    dbcursor = dbconn.cursor()
+    try:
+        for response in responses:
+            if response is None:
+                # Skip entries that are not okay.
+                # Do not record the failures in the processed_entries set.
+                countFailures += 1
+            else:
+
+                query = "SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id = ?;"
+                dbcursor.execute(query, (response.oeis_id, ))
+
+                previous_content = dbcursor.fetchall()
+
+                assert len(previous_content) <= 1
+                previous_content = None if len(previous_content) == 0 else previous_content[0]
+
+                if previous_content is None:
+                    # The oeis_id does not occur in the database yet.
+                    # We will insert it as a new entry.
+                    query = """INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"""
+                    dbcursor.execute(query, (response.oeis_id, response.timestamp, response.timestamp, response.main_content, response.bfile_content))
+                    countNewEntries += 1
+                elif previous_content != (response.main_content, response.bfile_content):
+                    # The database content is stale.
+                    # Update t1, t2, and content.
+                    query = "UPDATE oeis_entries SET t1 = ?, t2 = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
+                    dbcursor.execute(query, (response.timestamp, response.timestamp, response.main_content, response.bfile_content, response.oeis_id))
+                    countUpdatedEntries += 1
+                else:
+                    # The database content is identical to the freshly fetched content.
+                    # We will just update the t2 field, indicating the fresh fetch.
+                    query = "UPDATE oeis_entries SET t2 = ? WHERE oeis_id = ?;"
+                    dbcursor.execute(query, (response.timestamp, response.oeis_id))
+                    countIdenticalEntries += 1
+
+                processed_entries.add(response.oeis_id)
+    finally:
+        dbcursor.close()
+
+    dbconn.commit()
+
+    logger.info("Processed {} responses (failures: {}, new: {}, identical: {}, updated: {}).".format(len(responses), countFailures, countNewEntries, countIdenticalEntries, countUpdatedEntries))
+
+    return processed_entries
+
 def fetch_entries_into_database(dbconn, entries):
 
     FETCH_BATCH_SIZE  =  500 # 100 -- 1000 are reasonable
     NUM_WORKERS       =   20 # 10 -- 20 are reasonable
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
-    entries = set(entries)
+    entries = set(entries) # make a copy, and ensure it is a set.
 
     with concurrent.futures.ThreadPoolExecutor(NUM_WORKERS) as executor:
 
@@ -96,64 +161,20 @@ def fetch_entries_into_database(dbconn, entries):
 
             t1 = time.time()
 
-            # execute fetches in parallel
-            results = list(executor.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched))
+            # Execute fetches in parallel.
+
+            responses = list(executor.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched))
 
             t2 = time.time()
 
             duration = (t2 - t1)
             logger.info("{} fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
 
-            # Process the fetch results.
+            # Process the responses by updating the database.
 
-            countFailures         = 0
-            countNewEntries       = 0
-            countIdenticalEntries = 0
-            countUpdatedEntries   = 0
+            processed_entries = process_responses(dbconn, responses)
 
-            for result in results:
-
-                if result is None:
-                    # Skip entries that are not okay
-                    countFailures += 1
-                    continue
-
-                dbcursor = dbconn.cursor()
-                try:
-                    query = "SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id = ?;"
-                    dbcursor.execute(query, (result.oeis_id, ))
-
-                    previous_content = dbcursor.fetchall()
-
-                    assert len(previous_content) <= 1
-                    previous_content = None if len(previous_content) == 0 else previous_content[0]
-
-                    if previous_content is None:
-                        # The oeis_id does not occur in the database yet. We will insert it.
-                        query = "INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
-                        dbcursor.execute(query, (result.oeis_id, result.timestamp, result.timestamp, result.main_content, result.bfile_content))
-                        countNewEntries += 1
-                    elif previous_content != (result.main_content, result.bfile_content):
-                        # The database content is stale.
-                        # Update t1, t2, and content.
-                        query = "UPDATE oeis_entries SET t1 = ?, t2 = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
-                        dbcursor.execute(query, (result.timestamp, result.timestamp, result.main_content, result.bfile_content, result.oeis_id))
-                        countUpdatedEntries += 1
-                    else:
-                        # The database content is identical to the freshly fetched content.
-                        # We will just update the t2 field, indicating the fresh fetch.
-                        query = "UPDATE oeis_entries SET t2 = ? WHERE oeis_id = ?;"
-                        dbcursor.execute(query, (result.timestamp, result.oeis_id))
-                        countIdenticalEntries += 1
-                finally:
-                    dbcursor.close()
-
-                # Mark entry as processed by removing it from the 'entries' set.
-                entries.remove(result.oeis_id)
-
-            dbconn.commit()
-
-            logger.info("Processed {} results (failures: {}, new: {}, identical: {}, updated: {}).".format(len(results), countFailures, countNewEntries, countIdenticalEntries, countUpdatedEntries))
+            entries -= processed_entries
 
             # Calculate and show estimated-time-to-completion.
 
@@ -313,9 +334,9 @@ def database_update_cycle(database_filename):
 
         # Pause between update cycles.
 
-        PAUSE = max(300.0, random.gauss(1800.0, 600.0))
-        logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
-        time.sleep(PAUSE)
+        pause = max(300.0, random.gauss(1800.0, 600.0))
+        logger.info("Sleeping for {:.1f} seconds ...".format(pause))
+        time.sleep(pause)
 
 def main():
 
