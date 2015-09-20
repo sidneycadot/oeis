@@ -3,6 +3,9 @@ import logging
 import glob
 import json
 from collections import OrderedDict
+from timer import start_timer
+
+logger = logging.getLogger(__name__)
 
 # =====================================================================
 
@@ -217,8 +220,8 @@ class RecurrentSequence(Sequence):
 
     def _value(self, n):
 
-        if n < len(self._initial_values):
-            return self._initial_values[n]
+        if (n - self._first_index) < len(self._initial_values):
+            return self._initial_values[n - self._first_index]
 
         if n in self._memo:
             return self._memo[n]
@@ -285,32 +288,35 @@ def read_catalog_files(glob_pattern):
         "SmallestDivisorSequence" : SmallestDivisorSequence
     }
 
-    catalog = {}
+    with start_timer() as timer:
 
-    filenames = glob.glob(glob_pattern)
+        catalog = {}
 
-    for filename in filenames:
+        filenames = sorted(glob.glob(glob_pattern))
 
-        print("=====>", filename)
+        for filename in filenames:
 
-        with open(filename) as f:
-            oeis_catalog = json.load(f)
+            logger.info("Fetching catalog data from file '{}' ...".format(filename))
 
-        for (oeis_id_string, sequence_name, sequence_args) in oeis_catalog:
+            with open(filename) as f:
+                oeis_catalog = json.load(f)
 
-            assert oeis_id_string.startswith("A")
-            oeis_id = int(oeis_id_string[1:])
+            for (oeis_id_string, sequence_name, sequence_args) in oeis_catalog:
 
-            if oeis_id in catalog:
-                print("A{:06d} in file {!r} previously defined as {!r}.".format(oeis_id, filename, catalog[oeis_id]))
+                assert oeis_id_string.startswith("A")
+                oeis_id = int(oeis_id_string[1:])
 
-            assert oeis_id not in catalog
+                if oeis_id in catalog:
+                    logger.error("A{:06d} in file {!r} previously defined as {!r}, skipping.".format(oeis_id, filename, catalog[oeis_id]))
+                    continue
 
-            sequence_type = sequence_name_to_type[sequence_name]
-            sequence = sequence_type(*sequence_args)
+                sequence_type = sequence_name_to_type[sequence_name]
+                sequence = sequence_type(*sequence_args)
 
-            catalog[oeis_id] = sequence
+                catalog[oeis_id] = sequence
 
-    catalog = OrderedDict(sorted(catalog.items()))
+        catalog = OrderedDict(sorted(catalog.items()))
+
+        logger.info("Fetched {} catalog entries in {}.".format(len(catalog), timer.duration_string()))
 
     return catalog
