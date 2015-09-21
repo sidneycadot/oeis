@@ -2,7 +2,7 @@
 
 import pickle
 
-filename = "oeis.pickle"
+filename = "oeis_v20150920-10000.pickle"
 
 print("Reading data ...")
 with open(filename, "rb") as f:

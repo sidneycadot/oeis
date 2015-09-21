@@ -1,10 +1,24 @@
 #! /usr/bin/env python3
 
+"""This script is used to fetch the remote OEIS database to a local SQLite3 database.
+
+The script is designed to run indefinitely. When all remote data is fetched, the script
+will periodically refresh its local entries.
+
+Once every day, a consolidated version of the SQLite database will be compressed and
+written to the local directory. This file will be called "oeis_vYYYYMMDD.sqlite3.xz".
+Stale versions of this consolidated file will be removed automatically.
+"""
+
+import os
+import glob
+import datetime
 import time
 import sqlite3
 import random
-import multiprocessing
 import logging
+import lzma
+import concurrent.futures
 
 from timer import start_timer
 from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
@@ -12,6 +26,11 @@ from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
 logger = logging.getLogger(__name__)
 
 def ensure_database_schema_created(dbconn):
+    """Ensure that the 'oeis_entries' table is present in the database.
+
+    Note that the database schema has the "IF NOT EXISTS" clause.
+    This ensures that the statement will be ignored if the table is already present.
+    """
 
     schema = """
              CREATE TABLE IF NOT EXISTS oeis_entries (
@@ -23,15 +42,21 @@ def ensure_database_schema_created(dbconn):
              );
              """
 
+    # Remove the first 13 characters of each line of the SQL statement above, as well as the first and last lines.
+
     schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+
+    # Execute the schema creation statement.
+
     dbconn.execute(schema)
 
 def find_highest_oeis_id():
+    """Find the highest entry ID in the remote OEIS database by performing HTTP queries and doing a binary search."""
 
     SLEEP_AFTER_FAILURE = 5.0
 
-    success_id =  262000 # we know a-priori that this entry exists
-    failure_id = 1000000 # we know a-priori that this entry does not exist
+    success_id =  262000 # We know a-priori that this entry exists.
+    failure_id = 1000000 # We know a-priori that this entry does not exist.
 
     # Do a binary search, looking for the success/failure boundary.
     while success_id + 1 != failure_id:
@@ -61,8 +86,16 @@ def find_highest_oeis_id():
     return success_id
 
 def safe_fetch_remote_oeis_entry(entry):
+    """Fetch a single OEIS entry from the remote OEIS database, and swallow any exceptions.
+
+    If no issues are encountered, this function is identical to the 'fetch_remote_oeis_entry' function.
+    In case of an exception, a log message is generated and 'None' is returned.
+
+    The purpose of this function in to be used in a "map", where we want to inhibit exceptions.
+    """
+
     # Intercepts and reports any exceptions.
-    # The (parallel or sequential) map must run to completion.
+    # In case of an exception, a log message is generated, and None is returned.
     try:
         result = fetch_remote_oeis_entry(entry, True)
     except BaseException as exception:
@@ -70,115 +103,124 @@ def safe_fetch_remote_oeis_entry(entry):
         result = None
     return result
 
-def fetch_entries_into_database(dbconn, entries):
+def process_responses(dbconn, responses):
+    """Process a batch of responses by updating the local SQLite database.
 
-    FETCH_BATCH_SIZE  =  200 # 100 -- 1000 are reasonable
-    NUM_PROCESSES     =   10 # 10 -- 20 are reasonable
+    A logging message is produced that summarizes how the batch of responses was processed.
+    This function returns a set of OEIS IDs that have been succesfully processed.
+    """
+
+    countFailures         = 0
+    countNewEntries       = 0
+    countIdenticalEntries = 0
+    countUpdatedEntries   = 0
+
+    processed_entries = set()
+
+    dbcursor = dbconn.cursor()
+    try:
+        for response in responses:
+
+            if response is None:
+                # Skip entries that are not okay.
+                # Do not record the failures in the processed_entries set.
+                countFailures += 1
+                continue
+
+            query = "SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id = ?;"
+            dbcursor.execute(query, (response.oeis_id, ))
+
+            previous_content = dbcursor.fetchall()
+
+            assert len(previous_content) <= 1
+            previous_content = None if len(previous_content) == 0 else previous_content[0]
+
+            if previous_content is None:
+                # The oeis_id does not occur in the database yet.
+                # We will insert it as a new entry.
+                query = "INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
+                dbcursor.execute(query, (response.oeis_id, response.timestamp, response.timestamp, response.main_content, response.bfile_content))
+                countNewEntries += 1
+            elif previous_content != (response.main_content, response.bfile_content):
+                # The database content is stale.
+                # Update t1, t2, and content.
+                query = "UPDATE oeis_entries SET t1 = ?, t2 = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
+                dbcursor.execute(query, (response.timestamp, response.timestamp, response.main_content, response.bfile_content, response.oeis_id))
+                countUpdatedEntries += 1
+            else:
+                # The database content is identical to the freshly fetched content.
+                # We will just update the t2 field, indicating the fresh fetch.
+                query = "UPDATE oeis_entries SET t2 = ? WHERE oeis_id = ?;"
+                dbcursor.execute(query, (response.timestamp, response.oeis_id))
+                countIdenticalEntries += 1
+
+            processed_entries.add(response.oeis_id)
+
+    finally:
+        dbcursor.close()
+
+    dbconn.commit()
+
+    logger.info("Processed {} responses (failures: {}, new: {}, identical: {}, updated: {}).".format(len(responses), countFailures, countNewEntries, countIdenticalEntries, countUpdatedEntries))
+
+    return processed_entries
+
+def fetch_entries_into_database(dbconn, entries):
+    """Fetch a set of entries from the remote OEIS database and store the results in the database.
+
+    The 'entries' parameter contains a number of OEIS IDs.
+    This function can handle a large number of entries, up to the entire size of the OEIS database.
+
+    Entries are processed in randomized batches.
+    We use a pool of worker threads to perform the actual fetches.
+    This enhances fetch performance (in terms of fetche-per-second) dramatically.
+    Typical fetch performance is about 20 fetches per second.
+
+    The responses of each batch of entries are processed by the 'process_responses' function defined above.
+    """
+
+    FETCH_BATCH_SIZE  =  500 # 100 -- 1000 are reasonable
+    NUM_WORKERS       =   20 # 10 -- 20 are reasonable
     SLEEP_AFTER_BATCH =  2.0 # [seconds]
 
-    entries = set(entries)
+    entries = set(entries) # make a copy, and ensure it is a set.
 
-    if NUM_PROCESSES > 1:
-        pool = multiprocessing.Pool(NUM_PROCESSES)
-    else:
-        pool = None
-
-    try:
-
-        tStart = time.time()
-        nStart = len(entries)
+    with start_timer(len(entries)) as timer, concurrent.futures.ThreadPoolExecutor(NUM_WORKERS) as executor:
 
         while len(entries) > 0:
 
-            random_entries_count = min(FETCH_BATCH_SIZE, len(entries))
-            random_entries_to_be_fetched = random.sample(entries, random_entries_count)
+            batch_size = min(FETCH_BATCH_SIZE, len(entries))
 
-            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_PROCESSES, "worker" if NUM_PROCESSES == 1 else "workers", len(random_entries_to_be_fetched), len(entries)))
+            batch = random.sample(entries, batch_size)
 
-            t1 = time.time()
+            logger.info("Fetching data using {} {} for {} out of {} entries ...".format(NUM_WORKERS, "worker" if NUM_WORKERS == 1 else "workers", batch_size, len(entries)))
 
-            if pool is None:
-                # execute fetches sequentially
-                results = [safe_fetch_remote_oeis_entry(entry) for entry in random_entries_to_be_fetched]
-            else:
-                # execute fetches in parallel
-                results = pool.map(safe_fetch_remote_oeis_entry, random_entries_to_be_fetched)
+            with start_timer() as batch_timer:
 
-            t2 = time.time()
+                # Execute fetches in parallel.
+                responses = list(executor.map(safe_fetch_remote_oeis_entry, batch))
 
-            duration = (t2 - t1)
-            logger.info("{} fetches took {:.3f} seconds ({:.3f} fetches/second).".format(len(random_entries_to_be_fetched), duration, len(random_entries_to_be_fetched) / duration))
+                logger.info("{} fetches took {} seconds ({:.3f} fetches/second).".format(batch_size, batch_timer.duration_string(), batch_size / batch_timer.duration()))
 
-            # Process the fetch results.
+            # Process the responses by updating the database.
 
-            countFailures         = 0
-            countNewEntries       = 0
-            countIdenticalEntries = 0
-            countUpdatedEntries   = 0
+            processed_entries = process_responses(dbconn, responses)
 
-            for result in results:
-
-                if result is None:
-                    # Skip entries that are not okay
-                    countFailures += 1
-                    continue
-
-                dbcursor = dbconn.cursor()
-                try:
-                    query = "SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id = ?;"
-                    dbcursor.execute(query, (result.oeis_id, ))
-
-                    previous_content = dbcursor.fetchall()
-
-                    assert len(previous_content) <= 1
-                    previous_content = None if len(previous_content) == 0 else previous_content[0]
-
-                    if previous_content is None:
-                        # The oeis_id does not occur in the database yet. We will insert it.
-                        query = "INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
-                        dbcursor.execute(query, (result.oeis_id, result.timestamp, result.timestamp, result.main_content, result.bfile_content))
-                        countNewEntries += 1
-                    elif previous_content != (result.main_content, result.bfile_content):
-                        # The database content is stale.
-                        # Update t1, t2, and content.
-                        query = "UPDATE oeis_entries SET t1 = ?, t2 = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
-                        dbcursor.execute(query, (result.timestamp, result.timestamp, result.main_content, result.bfile_content, result.oeis_id))
-                        countUpdatedEntries += 1
-                    else:
-                        # The database content is identical to the freshly fetched content.
-                        # We will just update the t2 field, indicating the fresh fetch.
-                        query = "UPDATE oeis_entries SET t2 = ? WHERE oeis_id = ?;"
-                        dbcursor.execute(query, (result.timestamp, result.oeis_id))
-                        countIdenticalEntries += 1
-                finally:
-                    dbcursor.close()
-
-                # Mark entry as processed by removing it from the 'entries' set.
-                entries.remove(result.oeis_id)
-
-            dbconn.commit()
-
-            logger.info("Processed {} results (failures: {}, new: {}, identical: {}, updated: {}).".format(len(results), countFailures, countNewEntries, countIdenticalEntries, countUpdatedEntries))
+            entries -= processed_entries
 
             # Calculate and show estimated-time-to-completion.
 
-            tCurrent = time.time()
-            nCurrent = len(entries)
-
-            ETC = (tCurrent - tStart) * nCurrent / (nStart - nCurrent)
-            logger.info("Estimated time to completion: {:.1f} minutes.".format(ETC / 60.0))
+            logger.info("Estimated time to completion: {}.".format(timer.etc_string(work_remaining = len(entries))))
 
             # Sleep if we need to fetch more
             if len(entries) > 0:
                 logger.info("Sleeping for {:.1f} seconds ...".format(SLEEP_AFTER_BATCH))
                 time.sleep(SLEEP_AFTER_BATCH)
 
-    finally:
-        if pool is not None:
-            pool.close()
-            pool.join()
+        logger.info("Fetched {} entries in {}.".format(timer.total_work, timer.duration_string()))
 
 def make_database_complete(dbconn, highest_oeis_id):
+    """Fetch all entries from the remote OEIS database that are not yet present in the local SQLite database."""
 
     dbcursor = dbconn.cursor()
     try:
@@ -197,22 +239,8 @@ def make_database_complete(dbconn, highest_oeis_id):
 
     fetch_entries_into_database(dbconn, missing_entries)
 
-def update_database_entries_for_nonzero_time_window(dbconn):
-
-    dbcursor = dbconn.cursor()
-    try:
-        dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
-        zero_timewindow_entries = dbcursor.fetchall()
-    finally:
-        dbcursor.close()
-
-    zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
-
-    logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
-
-    fetch_entries_into_database(dbconn, zero_timewindow_entries)
-
 def update_database_entries_randomly(dbconn, howmany):
+    """Re-fetch (update) a random subset of entries that are already present in the local SQLite database."""
 
     dbcursor = dbconn.cursor()
     try:
@@ -231,7 +259,18 @@ def update_database_entries_randomly(dbconn, howmany):
 
     fetch_entries_into_database(dbconn, random_entries)
 
-def update_database_entries_by_score(dbconn, howmany):
+def update_database_entries_by_priority(dbconn, howmany):
+    """Re-fetch entries that are old, relative to their stability.
+
+    For each entry, a priority is determined, as follows:
+
+    The _age_ is defined as the number of seconds ago that the entry was last fetched in its current state.
+    The _stability_ is defined as the number of seconds between the first and last fetches in the current state.
+    The _priority_ is the _age_ divided by the _stability_.
+
+    A high priority indicates that the entry is old and/or unstable.
+    Such entries are fetched in preference to entries that are recent and/or stable (and have a lower priority).
+    """
 
     t_current = time.time()
 
@@ -239,50 +278,129 @@ def update_database_entries_by_score(dbconn, howmany):
     try:
         query = "SELECT oeis_id FROM oeis_entries ORDER BY (? - t2) / max(t2 - t1, 1e-6) DESC LIMIT ?;"
         dbcursor.execute(query, (t_current, howmany))
-        highest_score_entries = dbcursor.fetchall()
+        highest_priority_entries = dbcursor.fetchall()
     finally:
         dbcursor.close()
 
-    highest_score_entries = [oeis_id for (oeis_id, ) in highest_score_entries]
-    logger.info("Highest-score entries in local database selected for refresh: {}.".format(len(highest_score_entries)))
+    highest_priority_entries = [oeis_id for (oeis_id, ) in highest_priority_entries]
 
-    fetch_entries_into_database(dbconn, highest_score_entries)
+    logger.info("Highest-priority entries in local database selected for refresh: {}.".format(len(highest_priority_entries)))
+
+    fetch_entries_into_database(dbconn, highest_priority_entries)
+
+def update_database_entries_for_nonzero_time_window(dbconn):
+    """ Re-fetch entries in the database that have a 0-second time window. These are entries that have been fetched only once."""
+
+    dbcursor = dbconn.cursor()
+    try:
+        dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
+        zero_timewindow_entries = dbcursor.fetchall()
+    finally:
+        dbcursor.close()
+
+    zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
+
+    logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
+
+    fetch_entries_into_database(dbconn, zero_timewindow_entries)
 
 def vacuum_database(dbconn):
+    """Perform a VACUUM command on the database."""
+
     with start_timer() as timer:
         logger.info("Initiating VACUUM on database ...")
         dbconn.execute("VACUUM;")
         logger.info("VACUUM done in {}.".format(timer.duration_string()))
 
+def compress_file(from_filename, to_filename):
+    """Compress a file using the 'xz' compression algorithm."""
+
+    PRESET = 9 # level 9 without 'extra' works best on our data.
+
+    with start_timer() as timer, open(from_filename, "rb") as f:
+        logger.info("Reading uncompressed data from '{}' ...".format(from_filename))
+        data = f.read()
+        logger.info("Reading uncompressed data took {}.".format(timer.duration_string()))
+
+    with start_timer() as timer, lzma.open(to_filename, "wb", format = lzma.FORMAT_XZ, check = lzma.CHECK_CRC64, preset = PRESET) as f:
+        logger.info("Writing compressed data to '{}' ...".format(to_filename))
+        f.write(data)
+        logger.info("Writing compressed data took {}.".format(timer.duration_string()))
+
+def consolidate_database_daily(database_filename):
+    """Make a consolidated version of the database, once per day.
+
+    The consolidated version will have a standardized filename 'oeis_vYYYYMMDD.sqlite3.xz'.
+
+    If this filename already exists, we return immediately.
+
+    If not, we vacuum the database, and compress its file. This process takes ~ 2 hours on a fast desktop PC.
+
+    When the compressed database is written, we remove all 'stale' consolidated files,
+    i.e., all files that are called 'oeis_vYYYYMMDD.sqlite3.xz' except the one we just wrote.
+    """
+
+    xz_filename = datetime.datetime.now().strftime("oeis_v%Y%m%d.sqlite3.xz")
+    if os.path.exists(xz_filename):
+        return # file already exists.
+
+    with start_timer() as timer:
+
+        logger.info("Consolidating database to '{}' ...".format(xz_filename))
+
+        # Vacuum the database
+        dbconn = sqlite3.connect(database_filename)
+        try:
+            vacuum_database(dbconn)
+        finally:
+            dbconn.close()
+
+        # Create the xz file.
+        compress_file(database_filename, xz_filename)
+
+        # Remove stale files.
+        stale_files = [filename for filename in glob.glob("oeis_v????????.sqlite3.xz") if filename != xz_filename]
+        for filename in stale_files:
+            logger.info("Removing stale consolidated file '{}' ...".format(filename))
+            os.remove(filename)
+
+        logger.info("Consolidating data took {}.".format(timer.duration_string()))
+
 def database_update_cycle(database_filename):
+    """Perform a single cycle of the database update loop."""
+
+    with start_timer() as timer:
+
+        highest_oeis_id = find_highest_oeis_id() # Check OEIS server for highest entry ID.
+
+        dbconn = sqlite3.connect(database_filename)
+        try:
+            ensure_database_schema_created(dbconn)
+            make_database_complete(dbconn, highest_oeis_id)                      # Make sure we have all entries (full fetch on first run).
+            update_database_entries_randomly(dbconn, highest_oeis_id // 1000)    # Refresh 0.1 % of entries randomly.
+            update_database_entries_by_priority(dbconn, highest_oeis_id //  200) # Refresh 0.5 % of entries by priority.
+            update_database_entries_for_nonzero_time_window(dbconn)              # Make sure we have t1 != t2 for all entries (full fetch on first run).
+        finally:
+            dbconn.close()
+
+        consolidate_database_daily(database_filename)
+
+        logger.info("Full database update cycle took {}.".format(timer.duration_string()))
+
+def database_update_cycle_loop(database_filename):
+    """Call the database update cycle in an infinite loop, with random pauses in between."""
 
     while True:
 
-        # Perform an update cycle.
-
-        with start_timer() as timer:
-
-            dbconn = sqlite3.connect(database_filename)
-            try:
-                ensure_database_schema_created(dbconn)
-                highest_oeis_id = find_highest_oeis_id()
-                make_database_complete(dbconn, highest_oeis_id)                   # make sure we have all entries (full fetch on first run)
-                update_database_entries_for_nonzero_time_window(dbconn)           # make sure we have t1 != t2 for all entries (full fetch on first run)
-                update_database_entries_randomly(dbconn, highest_oeis_id // 1000) # refresh 0.1 % of entries randomly
-                update_database_entries_by_score(dbconn, highest_oeis_id //   50) # refresh 2.0 % of entries by score
-                vacuum_database(dbconn)
-            finally:
-                dbconn.close()
-
-            logger.info("Full database update cycle took {}.".format(timer.duration_string()))
+        database_update_cycle(database_filename)
 
         # Pause between update cycles.
-
-        PAUSE = max(300.0, random.gauss(1800.0, 600.0))
-        logger.info("Sleeping for {:.1f} seconds ...".format(PAUSE))
-        time.sleep(PAUSE)
+        pause = max(300.0, random.gauss(1800.0, 600.0))
+        logger.info("Sleeping for {:.1f} seconds ...".format(pause))
+        time.sleep(pause)
 
 def main():
+    """Initialize logger and run the database update cycle loop."""
 
     database_filename = "oeis.sqlite3"
 
@@ -290,7 +408,7 @@ def main():
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
     try:
-        database_update_cycle(database_filename)
+        database_update_cycle_loop(database_filename)
     finally:
         logging.shutdown()
 
