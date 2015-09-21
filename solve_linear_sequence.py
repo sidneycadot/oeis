@@ -111,7 +111,7 @@ def solve_lineair_equation(oeis_id, lookup, term_definitions):
 
     try:
         coefficients = inverse_matrix(a.T.dot(a)).dot(a.T).dot(b)
-    except ValueError:
+    except ZeroDivisionError:
         # Matrix does not have a unique solution.
         return None
 
