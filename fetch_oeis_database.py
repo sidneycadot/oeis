@@ -327,7 +327,7 @@ def compress_file(from_filename, to_filename):
         f.write(data)
         logger.info("Writing compressed data took {}.".format(timer.duration_string()))
 
-def consolidate_database_daily(database_filename):
+def consolidate_database_daily(database_filename, remove_stale_files_flag):
     """Make a consolidated version of the database, once per day.
 
     The consolidated version will have a standardized filename 'oeis_vYYYYMMDD.sqlite3.xz'.
@@ -359,10 +359,11 @@ def consolidate_database_daily(database_filename):
         compress_file(database_filename, xz_filename)
 
         # Remove stale files.
-        stale_files = [filename for filename in glob.glob("oeis_v????????.sqlite3.xz") if filename != xz_filename]
-        for filename in stale_files:
-            logger.info("Removing stale consolidated file '{}' ...".format(filename))
-            os.remove(filename)
+        if remove_stale_files_flag:
+            stale_files = [filename for filename in glob.glob("oeis_v????????.sqlite3.xz") if filename != xz_filename]
+            for filename in stale_files:
+                logger.info("Removing stale consolidated file '{}' ...".format(filename))
+                os.remove(filename)
 
         logger.info("Consolidating data took {}.".format(timer.duration_string()))
 
@@ -383,7 +384,7 @@ def database_update_cycle(database_filename):
         finally:
             dbconn.close()
 
-        consolidate_database_daily(database_filename)
+        consolidate_database_daily(database_filename, remove_stale_files_flag = False)
 
         logger.info("Full database update cycle took {}.".format(timer.duration_string()))
 
