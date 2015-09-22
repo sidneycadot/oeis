@@ -223,19 +223,22 @@ def make_terms(max_beta_poly, offset_alpha_beta):
 
 def solve_polynomial_sequences():
 
-    filename = "oeis_with_bfile-10000.pickle"
-
+    filename = "oeis_v20150922.pickle"
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)
 
     solved = set()
 
-    with open("polynomial_solutions.json", "w") as f, concurrent.futures.ProcessPoolExecutor() as executor:
+    with open("polynomial_solutions.txt", "w") as f, concurrent.futures.ProcessPoolExecutor() as executor:
         for degree in range(1, 101):
             terms = [Term(None, None, beta) for beta in range(degree)]
-            print(terms)
-            #work = [(oeis_entry, terms) for oeis_entry in oeis_entries if oeis_entry.oeis_id not in solved and len(oeis_entry.offset) >= 1]
-
+            work = [(oeis_entry, terms) for oeis_entry in oeis_entries if oeis_entry.oeis_id not in solved and len(oeis_entry.offset) >= 1]
+            for (oeis_entry, solution) in executor.map(find_sequence_solution, work):
+                if solution is not None:
+                    solved.add(oeis_entry.oeis_id)
+                    print("A{:06d} first_index: {} solution found: terms = {}, solution = {}".format(oeis_entry.oeis_id, oeis_entry.offset[0], "[{}]".format(", ".join(repr(t) for t in terms)), solution))
+                    print("A{:06d} first_index: {} solution found: terms = {}, solution = {}".format(oeis_entry.oeis_id, oeis_entry.offset[0], "[{}]".format(", ".join(repr(t) for t in terms)), solution), file = f, flush = True)
+                    print("degree = {}, solutions found so far: {}".format(degree, len(solved)), flush = True)
 
 def solve_sequences():
 
