@@ -221,6 +221,22 @@ def make_terms(max_beta_poly, offset_alpha_beta):
                 terms.append(term)
     return terms
 
+def solve_polynomial_sequences():
+
+    filename = "oeis_with_bfile-10000.pickle"
+
+    with open(filename, "rb") as f:
+        oeis_entries = pickle.load(f)
+
+    solved = set()
+
+    with open("polynomial_solutions.json", "w") as f, concurrent.futures.ProcessPoolExecutor() as executor:
+        for degree in range(1, 101):
+            terms = [Term(None, None, beta) for beta in range(degree)]
+            print(terms)
+            #work = [(oeis_entry, terms) for oeis_entry in oeis_entries if oeis_entry.oeis_id not in solved and len(oeis_entry.offset) >= 1]
+
+
 def solve_sequences():
 
     catalog = read_catalog_files("catalog_files/*.json")
@@ -264,7 +280,8 @@ def main():
 
     try:
         with start_timer() as timer:
-            solve_sequences()
+            #solve_sequences()
+            solve_polynomial_sequences()
             logger.info("Sequence solving completed in {}.".format(timer.duration_string()))
     finally:
         logging.shutdown()
