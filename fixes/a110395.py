@@ -11,7 +11,7 @@ class A110395:
     def __init__(self):
         self.memo = {}
 
-    def __call__(self, n):
+    def __getitem__(self, n):
 
         assert n >= 1
 
@@ -23,7 +23,7 @@ class A110395:
         if n == 1:
             result = 1
         else:
-            result = n * complement(self(n - 1), BASE)
+            result = n * complement(self[n - 1], BASE)
 
         self.memo[n] = result
 
@@ -38,7 +38,7 @@ def main():
 
     with open("b110395.txt", "w") as f:
         for n in range(MIN, MAX + 1):
-            print(n, a110395(n), file = f)
+            print(n, a110395[n], file = f)
 
 if __name__ == "__main__":
     main()
