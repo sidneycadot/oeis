@@ -19,14 +19,7 @@ logger = logging.getLogger(__name__)
 
 expected_directive_order = re.compile("I(?:S|ST|STU)(?:|V|VW|VWX)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
 
-identification_patterns = [re.compile(pattern) for pattern in [
-            "N[0-9]{4}$",
-            "M[0-9]{4}$",
-            "M[0-9]{4} M[0-9]{4}$",
-            "M[0-9]{4} N[0-9]{4}$",
-            "M[0-9]{4} N[0-9]{4} N[0-9]{4}$"
-        ]
-    ]
+identification_pattern = re.compile("[MN][0-9]{4}( [MN][0-9]{4})*$")
 
 # The expected keywords are documented in three places:
 #
@@ -78,52 +71,25 @@ bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 
 def parse_main_content(oeis_id, main_content):
 
-    # As described here: https://oeis.org/eishelp1.html
-
-    # The directives %S, %T, and %U were originally intended as the absolute values of the sequence entries,
-    # with the signed entries given as %V, %W, %X. However, in the versions we downloaded, %S, %T, and %U
-    # are signed, and %V, %W, and %X are never present.
-
-    #expected_directives = [
-    #    "%I", # Identification Line                                     (REQUIRED)
-    #    "%S", # Beginning f the sequence (line 1 of 3)                  (REQUIRED)
-    #    "%T", # Beginning f the sequence (line 2 of 3)
-    #    "%U", # Beginning f the sequence (line 3 of 3)
-    #    "%N", # Name of sequence                                        (REQUIRED)
-    #    "%D", # Detailed references
-    #    "%H", # Links related to this sequence
-    #    "%F", # Formula
-    #    "%Y", # Cross-references to other sequences
-    #    "%A", # Author, submitter, or other Authority                   (REQUIRED)
-    #    "%O", # Offset a, b                                             (REQUIRED)
-    #    "%p", # Computer program to produce the sequence (Maple)
-    #    "%t", # Computer program to produce the sequence (Mathematica)
-    #    "%o", # Computer program to produce the sequence (other computer language)
-    #    "%E", # Extensions and errors
-    #    "%e", # Examples
-    #    "%K", # Keywords                                                (REQUIRED)
-    #    "%C"  # Comments
-    #]
-
-    # The order of expected directives, for any given entry is as follows:
+    # The order and count of expected directives, for any given entry, is as follows:
     #
-    # - First, a single "%I" entry.
-    # - Next, either a single "%S" line, an "%S" line followed by a "%T" line, or an "%S" line followed by a "%T" line followed by a "%U" line.
-    # - Next, either a single "%V" line, a "%V" line followed by a "%W" line, or a "%V" line followed by a "%W" line followed by an "%X" line.
-    # - Next, a single "%N" line.
-    # - Next, zero or more "%C" lines.
-    # - Next, zero or more "%D" lines.
-    # - Next, zero or more "%H" lines.
-    # - Next, zero or more "%F" lines.
-    # - Next, zero or more "%e" lines.
-    # - Next, zero or more "%p" lines.
-    # - Next, zero or more "%t" lines.
-    # - Next, zero or more "%o" lines.
-    # - Next, zero or more "%Y" lines.
-    # - Next, a single "%K" line.
-    # - Next, an optional "%O" line.
-    # - Next, an optional "%A" line.
-    # - Next, zero or more "%E" lines.
+    # * %I   one                Identification line.
+    # * %STU S/ST/STU           Unsigned values.
+    # * %VWX V/VW/VWX           Signed values.
+    # * %N   one                Name.
+    # - %C   zero or more       Comments.
+    # - %D   zero or more       Detailed references.
+    # - %H   zero or more       Links.
+    # - %F   zero or more       Formula.
+    # - %e   zero or more       Examples.
+    # - %p   zero or more       Maple programs.
+    # - %t   zero or more       Mathematica programs.
+    # - %o   zero or more       Other programs.
+    # - %Y   zero or more       Cross-references to other sequences.
+    # * %K   one                Keywords.
+    # * %O   zero or one        Offset a or a,b.
+    # - %A   zero or one        Author, submitter, or authority.
+    # - %E   zero or more       Extensions and errors.
 
     # Select only lines that have the proper directive format.
 
@@ -167,32 +133,33 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== collect directives
 
-    line_I  = None
     line_S  = None
     line_T  = None
     line_U  = None
+
     line_V  = None
     line_W  = None
     line_X  = None
-    line_N  = None
+
     lines_C = []
     lines_D = []
     lines_H = []
-    line_K  = None
-    line_O  = None
-    lines_A = []
+
+    dv = {}
 
     for (directive, directive_value) in lines:
+
+        if directive not in dv:
+            dv[directive] = []
+
+        dv[directive].append(directive_value)
 
         if directive in acceptable_characters:
             unacceptable_characters = set(directive_value) - acceptable_characters[directive]
             if unacceptable_characters:
                 logger.warning("[A{:06}] (P10) Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, directive_value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
 
-        if directive == 'I':
-            assert line_I is None # only one %I directive is allowed
-            line_I = directive_value
-        elif directive == 'S':
+        if directive == 'S':
             assert line_S is None # only one %S directive is allowed
             line_S = directive_value
         elif directive == 'T':
@@ -201,6 +168,7 @@ def parse_main_content(oeis_id, main_content):
         elif directive == 'U':
             assert line_U is None # only one %U directive is allowed
             line_U = directive_value
+
         if directive == 'V':
             assert line_V is None # only one %V directive is allowed
             line_V = directive_value
@@ -210,36 +178,27 @@ def parse_main_content(oeis_id, main_content):
         elif directive == 'X':
             assert line_X is None # only one %X directive is allowed
             line_X = directive_value
-        elif directive == 'N':
-            assert line_N is None # only one %N directive is allowed
-            line_N = directive_value
-        elif directive == 'C':
+
+        if directive == 'C':
             lines_C.append(directive_value) # multiple %C directives are allowed
-        elif directive == 'D':
+
+        if directive == 'D':
             lines_D.append(directive_value) # multiple %D directives are allowed
+
         elif directive == 'H':
             lines_H.append(directive_value) # multiple %H directives are allowed
-        elif directive == 'K':
-            assert line_K is None # only one %K directive is allowed
-            line_K = directive_value
-        elif directive == 'O':
-            assert line_O is None # only one %O directive is allowed
-            line_O = directive_value
-        elif directive == 'A':
-            lines_A.append(directive_value) # multiple %A directives are allowed
 
     # ========== process I directive
 
-    assert (line_I is not None)
+    assert len(dv['I']) == 1 # we expect precisely one %I line.
 
-    identification = line_I
+    identification = dv['I'][0]
+
     if identification == "":
         identification = None
     else:
-        for identification_pattern in identification_patterns:
-            if identification_pattern.match(identification) is not None:
-                break
-        else:
+        # TODO: this will move to the checker.
+        if identification_pattern.match(identification) is None:
             logger.warning("[A{:06}] (P14) Unusual %I directive value: '{}'.".format(oeis_id, identification))
 
     # ========== process S/T/U directives
@@ -296,8 +255,8 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== process N directive
 
-    assert (line_N is not None)
-    name = line_N
+    assert len(dv['N']) == 1
+    name = dv['N'][0]
 
     # ========== process C directive
     # ========== process D directive
@@ -305,16 +264,22 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== process A directive
 
-    if len(lines_A) == 0:
-        logger.warning("[A{:06}] (P1) Missing %A directive.".format(oeis_id))
+    if 'A' not in dv:
+        author = None
+    else:
+        author = "".join(line + "\n" for line in dv['A'])
+
+    #if len(lines_A) == 0: TODO: warning?
+    #    logger.warning("[A{:06}] (P1) Missing %A directive.".format(oeis_id))
 
     # ========== process O directive
 
-    if line_O is None:
+    if 'O' not in dv:
         logger.warning("[A{:06}] (P2) Missing %O directive.".format(oeis_id))
         offset = () # empty tuple
     else:
-        offset = line_O
+        assert len(dv['O']) == 1
+        offset = dv['O'][0]
 
         offset = tuple(int(o) for o in offset.split(","))
         if len(offset) != 2:
@@ -322,12 +287,12 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== process K directive
 
-    assert line_K is not None
-    keywords = line_K
+    assert len(dv['K']) == 1 # we expect precisely one %K line.
+    keywords = dv['K'][0]
 
     keywords = keywords.split(",")
 
-    # Check for unexpected keywords.
+    # Check for unexpected keywords. TODO: move to checker
 
     unexpected_keywords = set(keywords) - expected_keywords_set
 
@@ -335,9 +300,10 @@ def parse_main_content(oeis_id, main_content):
         if unexpected_keyword == "":
             logger.warning("[A{:06}] (P13) Unexpected empty keyword in %K directive value.".format(oeis_id))
         else:
+            # TODO: move to checker
             logger.warning("[A{:06}] (P15) Unexpected keyword '{}' in %K directive value.".format(oeis_id, unexpected_keyword))
 
-    # Check for duplicate keywords.
+    # Check for duplicate keywords. (Keep here)
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
@@ -345,7 +311,7 @@ def parse_main_content(oeis_id, main_content):
             logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
 
     # Canonify keywords: remove empty keywords and duplicates.
-    # We not sort.
+    # We do not sort.
 
     canon = []
     for keyword in keywords:
