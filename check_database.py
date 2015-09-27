@@ -20,6 +20,7 @@ def main():
     filename = "oeis_with_bfile.pickle"
     filename = "oeis_with_bfile-10000.pickle"
     filename = "oeis_v20150919.pickle"
+    filename = "oeis.pickle"
 
     with open(filename, "rb") as f:
         oeis_entries = pickle.load(f)

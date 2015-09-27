@@ -20,8 +20,9 @@ import logging
 import lzma
 import concurrent.futures
 
-from timer import start_timer
 from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
+from timer                   import start_timer
+from exit_scope              import close_when_done, shutdown_when_done
 
 logger = logging.getLogger(__name__)
 
@@ -117,8 +118,8 @@ def process_responses(dbconn, responses):
 
     processed_entries = set()
 
-    dbcursor = dbconn.cursor()
-    try:
+    with close_when_done(dbconn.cursor()) as dbcursor:
+
         for response in responses:
 
             if response is None:
@@ -155,9 +156,6 @@ def process_responses(dbconn, responses):
                 countIdenticalEntries += 1
 
             processed_entries.add(response.oeis_id)
-
-    finally:
-        dbcursor.close()
 
     dbconn.commit()
 
@@ -222,12 +220,9 @@ def fetch_entries_into_database(dbconn, entries):
 def make_database_complete(dbconn, highest_oeis_id):
     """Fetch all entries from the remote OEIS database that are not yet present in the local SQLite database."""
 
-    dbcursor = dbconn.cursor()
-    try:
+    with close_when_done(dbconn.cursor()) as dbcursor:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
         present_entries = dbcursor.fetchall()
-    finally:
-        dbcursor.close()
 
     present_entries = [oeis_id for (oeis_id, ) in present_entries]
     logger.info("Entries present in local database: {}.".format(len(present_entries)))
@@ -242,12 +237,9 @@ def make_database_complete(dbconn, highest_oeis_id):
 def update_database_entries_randomly(dbconn, howmany):
     """Re-fetch (update) a random subset of entries that are already present in the local SQLite database."""
 
-    dbcursor = dbconn.cursor()
-    try:
+    with close_when_done(dbconn.cursor()) as dbcursor:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
         present_entries = dbcursor.fetchall()
-    finally:
-        dbcursor.close()
 
     present_entries = [oeis_id for (oeis_id, ) in present_entries]
 
@@ -274,13 +266,10 @@ def update_database_entries_by_priority(dbconn, howmany):
 
     t_current = time.time()
 
-    dbcursor = dbconn.cursor()
-    try:
+    with close_when_done(dbconn.cursor()) as dbcursor:
         query = "SELECT oeis_id FROM oeis_entries ORDER BY (? - t2) / max(t2 - t1, 1e-6) DESC LIMIT ?;"
         dbcursor.execute(query, (t_current, howmany))
         highest_priority_entries = dbcursor.fetchall()
-    finally:
-        dbcursor.close()
 
     highest_priority_entries = [oeis_id for (oeis_id, ) in highest_priority_entries]
 
@@ -291,12 +280,9 @@ def update_database_entries_by_priority(dbconn, howmany):
 def update_database_entries_for_nonzero_time_window(dbconn):
     """ Re-fetch entries in the database that have a 0-second time window. These are entries that have been fetched only once."""
 
-    dbcursor = dbconn.cursor()
-    try:
+    with close_when_done(dbconn.cursor()) as dbcursor:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
         zero_timewindow_entries = dbcursor.fetchall()
-    finally:
-        dbcursor.close()
 
     zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
 
@@ -349,11 +335,8 @@ def consolidate_database_daily(database_filename, remove_stale_files_flag):
         logger.info("Consolidating database to '{}' ...".format(xz_filename))
 
         # Vacuum the database
-        dbconn = sqlite3.connect(database_filename)
-        try:
+        with close_when_done(sqlite3.connect(database_filename)) as dbconn:
             vacuum_database(dbconn)
-        finally:
-            dbconn.close()
 
         # Create the xz file.
         compress_file(database_filename, xz_filename)
@@ -374,15 +357,12 @@ def database_update_cycle(database_filename):
 
         highest_oeis_id = find_highest_oeis_id() # Check OEIS server for highest entry ID.
 
-        dbconn = sqlite3.connect(database_filename)
-        try:
+        with close_when_done(sqlite3.connect(database_filename)) as dbconn:
             ensure_database_schema_created(dbconn)
             make_database_complete(dbconn, highest_oeis_id)                      # Make sure we have all entries (full fetch on first run).
             update_database_entries_randomly(dbconn, highest_oeis_id // 1000)    # Refresh 0.1 % of entries randomly.
             update_database_entries_by_priority(dbconn, highest_oeis_id //  200) # Refresh 0.5 % of entries by priority.
             update_database_entries_for_nonzero_time_window(dbconn)              # Make sure we have t1 != t2 for all entries (full fetch on first run).
-        finally:
-            dbconn.close()
 
         consolidate_database_daily(database_filename, remove_stale_files_flag = False)
 
@@ -408,10 +388,8 @@ def main():
     FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-    try:
+    with shutdown_when_done(logging):
         database_update_cycle_loop(database_filename)
-    finally:
-        logging.shutdown()
 
 if __name__ == "__main__":
     main()

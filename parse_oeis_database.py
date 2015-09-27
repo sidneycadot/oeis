@@ -10,10 +10,13 @@ import pickle
 import collections
 import logging
 import sqlite3
+import lzma, gzip
+import concurrent.futures
 
-from OeisEntry import OeisEntry
-from charmap   import acceptable_characters
-from timer     import start_timer
+from OeisEntry  import OeisEntry
+from charmap    import acceptable_characters
+from timer      import start_timer
+from exit_scope import close_when_done, shutdown_when_done
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,100 @@ expected_keywords_set = frozenset(expected_keywords)
 
 bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 
+def digits(n):
+    return len(str(abs(n)))
+
+def parse_optional_multiline_directive(dv, directive):
+    if directive not in dv:
+        return None
+    else:
+        return "".join(line + "\n" for line in dv[directive])
+
+def parse_mandatory_singleline_directive(dv, directive):
+    assert directive in dv
+    assert len(dv[directive]) == 1
+    return dv[directive][0]
+
+def parse_optional_singleline_directive(dv, directive):
+    if directive not in dv:
+        return None
+    else:
+        assert len(dv[directive]) == 1
+        return dv[directive][0]
+
+def parse_value_directives(dv, directives):
+
+    expect_next = 0 # -1 = no, 0 = maybe (first line), 1 = yes
+
+    lines = []
+
+    for directive in directives:
+        if directive in dv:
+            assert len(dv[directive]) == 1
+            line = dv[directive][0]
+            lines.append(line)
+            if line.endswith(","):
+                expect_next = 1
+            else:
+                expect_next = -1
+        else:
+            assert expect_next <= 0
+            expect_next = -1
+
+    assert expect_next == -1
+
+    if len(lines) == 0:
+        return None
+
+    lines = "".join(lines)
+
+    if lines == "":
+        return []
+
+    values = [int(value_string) for value_string in lines.split(",")]
+
+    assert ",".join(str(value) for value in values) == lines
+    return values
+
+def check_keywords(oeis_id, keywords):
+
+    # Check forbidden combinations of keywords.
+
+    if "tabl" in keywords and "tabf" in keywords:
+        logger.warning("A{:06} (Pxx) Keywords 'tabl' and 'tabf' occur together, which should not happen.".format(oeis_id))
+
+    if "nice" in keywords and "less" in keywords:
+        logger.warning("A{:06} (Pxx) Keywords 'nice' and 'less' occur together, which should not happen.".format(oeis_id))
+
+    if "easy" in keywords and "hard" in keywords:
+        logger.warning("A{:06} (Pxx) Keywords 'easy' and 'hard' occur together, which should not happen.".format(oeis_id))
+
+    if "nonn" in keywords and "sign" in keywords:
+        logger.warning("A{:06} (Pxx) Keywords 'nonn' and 'sign' occur together, which should not happen.".format(oeis_id))
+
+    if "full" in keywords and "more" in keywords:
+        logger.warning("A{:06} (Pxx) Keywords 'full' and 'more' occur together, which should not happen.".format(oeis_id))
+
+    # Check exclusive keywords.
+
+    if "allocated"  in keywords and len(keywords) > 1:
+        logger.warning("A{:06} (Pxx) Keyword 'allocated' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+        
+    if "allocating" in keywords and len(keywords) > 1:
+        logger.warning("A{:06} (Pxx) Keyword 'allocating' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+
+    if "dead" in keywords and len(keywords) > 1:
+        logger.warning("A{:06} (Pxx) Keyword 'dead' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+
+    if "recycled" in keywords and len(keywords) > 1:
+        logger.warning("A{:06} (Pxx) Keyword 'recycled' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+
+    # Check presence of either 'none' or 'sign' keyword.
+
+    if not(("allocated" in keywords) or ("allocating" in keywords) or ("dead" in keywords) or ("recycled" in keywords)):
+        if ("nonn" not in keywords) and ("sign" not in keywords):
+            logger.warning("A{:06} (Pxx) Keyword 'nonn' or 'sign' are both absent.".format(oeis_id))
+
 def parse_main_content(oeis_id, main_content):
 
     # The order and count of expected directives, for any given entry, is as follows:
@@ -93,7 +190,7 @@ def parse_main_content(oeis_id, main_content):
 
     # Select only lines that have the proper directive format.
 
-    directive_line_pattern = "%(.) A{:06d}(.*)$".format(oeis_id)
+    directive_line_pattern = "%(.) A{:06}(.*)$".format(oeis_id)
 
     lines = re.findall(directive_line_pattern, main_content, re.MULTILINE)
 
@@ -114,9 +211,9 @@ def parse_main_content(oeis_id, main_content):
 
     if True: # check format
 
-        header = "# Greetings from The On-Line Encyclopedia of Integer Sequences! http://oeis.org/\n\nSearch: id:a{:06d}\nShowing 1-1 of 1\n\n".format(oeis_id)
+        header = "# Greetings from The On-Line Encyclopedia of Integer Sequences! http://oeis.org/\n\nSearch: id:a{:06}\nShowing 1-1 of 1\n\n".format(oeis_id)
 
-        check_main_content = ["%{} A{:06d}{}{}\n".format(directive, oeis_id, "" if directive_value == "" else " ", directive_value) for (directive, directive_value) in lines]
+        check_main_content = ["%{} A{:06}{}{}\n".format(directive, oeis_id, "" if directive_value == "" else " ", directive_value) for (directive, directive_value) in lines]
 
         footer = "\n# Content is available under The OEIS End-User License Agreement: http://oeis.org/LICENSE\n"
 
@@ -124,6 +221,8 @@ def parse_main_content(oeis_id, main_content):
 
         if main_content != check_main_content:
             logger.warning("[A{:06}] (P17) Main content reconstruction failed.".format(oeis_id))
+            logger.info   ("[A{:06}]       original ............ : {!r}.".format(oeis_id, main_content))
+            logger.info   ("[A{:06}]       reconstruction ...... : {!r}.".format(oeis_id, check_main_content))
 
     # ========== check order of directives
 
@@ -133,162 +232,43 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== collect directives
 
-    line_S  = None
-    line_T  = None
-    line_U  = None
-
-    line_V  = None
-    line_W  = None
-    line_X  = None
-
-    lines_C = []
-    lines_D = []
-    lines_H = []
-
     dv = {}
 
-    for (directive, directive_value) in lines:
+    for (directive, value) in lines:
 
         if directive not in dv:
             dv[directive] = []
 
-        dv[directive].append(directive_value)
+        dv[directive].append(value)
 
         if directive in acceptable_characters:
-            unacceptable_characters = set(directive_value) - acceptable_characters[directive]
+            unacceptable_characters = set(value) - acceptable_characters[directive]
             if unacceptable_characters:
-                logger.warning("[A{:06}] (P10) Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, directive_value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
+                logger.warning("[A{:06}] (P10) Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
 
-        if directive == 'S':
-            assert line_S is None # only one %S directive is allowed
-            line_S = directive_value
-        elif directive == 'T':
-            assert line_T is None # only one %T directive is allowed
-            line_T = directive_value
-        elif directive == 'U':
-            assert line_U is None # only one %U directive is allowed
-            line_U = directive_value
+    # ========== parse all directives
 
-        if directive == 'V':
-            assert line_V is None # only one %V directive is allowed
-            line_V = directive_value
-        elif directive == 'W':
-            assert line_W is None # only one %W directive is allowed
-            line_W = directive_value
-        elif directive == 'X':
-            assert line_X is None # only one %X directive is allowed
-            line_X = directive_value
+    identification        = parse_mandatory_singleline_directive (dv, 'I')
+    stu_values            = parse_value_directives               (dv, "STU")
+    vwx_values            = parse_value_directives               (dv, "VWX")
+    name                  = parse_mandatory_singleline_directive (dv, 'N')
+    comments              = parse_optional_multiline_directive   (dv, 'C')
+    detailed_references   = parse_optional_multiline_directive   (dv, 'D')
+    links                 = parse_optional_multiline_directive   (dv, 'H')
+    formulas              = parse_optional_multiline_directive   (dv, 'F')
+    examples              = parse_optional_multiline_directive   (dv, 'e')
+    maple_programs        = parse_optional_multiline_directive   (dv, 'p')
+    mathematica_programs  = parse_optional_multiline_directive   (dv, 't')
+    other_programs        = parse_optional_multiline_directive   (dv, 'o')
+    cross_references      = parse_optional_multiline_directive   (dv, 'Y')
+    keywords              = parse_mandatory_singleline_directive (dv, 'K')
+    offset                = parse_optional_singleline_directive  (dv, 'O')
+    author                = parse_optional_singleline_directive  (dv, 'A')
+    extensions_and_errors = parse_optional_multiline_directive   (dv, 'E')
 
-        if directive == 'C':
-            lines_C.append(directive_value) # multiple %C directives are allowed
+    # ========== process %K directive
 
-        if directive == 'D':
-            lines_D.append(directive_value) # multiple %D directives are allowed
-
-        elif directive == 'H':
-            lines_H.append(directive_value) # multiple %H directives are allowed
-
-    # ========== process I directive
-
-    assert len(dv['I']) == 1 # we expect precisely one %I line.
-
-    identification = dv['I'][0]
-
-    if identification == "":
-        identification = None
-    else:
-        # TODO: this will move to the checker.
-        if identification_pattern.match(identification) is None:
-            logger.warning("[A{:06}] (P14) Unusual %I directive value: '{}'.".format(oeis_id, identification))
-
-    # ========== process S/T/U directives
-
-    # An S line is mandatory.
-    # If a T/U line is present, the previous line should be present and end in a comma, and vice versa.
-
-    assert (line_S is not None)
-    assert (line_T is not None) == (line_S is not None and line_S.endswith(","))
-    assert (line_U is not None) == (line_T is not None and line_T.endswith(","))
-
-    if line_S == "":
-        logger.warning("[A{:06}] (P3) Unusual %S directive without value.".format(oeis_id))
-
-    S = "" if line_S is None else line_S
-    T = "" if line_T is None else line_T
-    U = "" if line_U is None else line_U
-
-    STU = S + T + U
-
-    stu_values = [int(value_string) for value_string in STU.split(",") if len(value_string) > 0]
-
-    assert ",".join([str(stu_value) for stu_value in stu_values]) == STU
-
-    assert all(stu_value >= 0 for stu_value in stu_values)
-
-    # ========== process V/W/X directives
-
-    assert (line_W is not None) == (line_V is not None and line_V.endswith(","))
-    assert (line_X is not None) == (line_W is not None and line_W.endswith(","))
-
-    V = "" if line_V is None else line_V
-    W = "" if line_W is None else line_W
-    X = "" if line_X is None else line_X
-
-    VWX = V + W + X
-
-    vwx_values = [int(value_string) for value_string in VWX.split(",") if len(value_string) > 0]
-
-    assert ",".join([str(vwx_value) for vwx_value in vwx_values]) == VWX
-
-    # ==========
-
-    if line_V is not None:
-
-        assert any(vwx_value < 0 for vwx_value in vwx_values)
-        assert (abs(vwx_value) == stu_value for (vwx_value, stu_value) in zip(vwx_values, stu_values))
-
-        assert [abs(v) for v in vwx_values] == stu_values
-
-        main_values = vwx_values
-    else:
-        main_values = stu_values
-
-    # ========== process N directive
-
-    assert len(dv['N']) == 1
-    name = dv['N'][0]
-
-    # ========== process C directive
-    # ========== process D directive
-    # ========== process H directive
-
-    # ========== process A directive
-
-    if 'A' not in dv:
-        author = None
-    else:
-        author = "".join(line + "\n" for line in dv['A'])
-
-    #if len(lines_A) == 0: TODO: warning?
-    #    logger.warning("[A{:06}] (P1) Missing %A directive.".format(oeis_id))
-
-    # ========== process O directive
-
-    if 'O' not in dv:
-        logger.warning("[A{:06}] (P2) Missing %O directive.".format(oeis_id))
-        offset = () # empty tuple
-    else:
-        assert len(dv['O']) == 1
-        offset = dv['O'][0]
-
-        offset = tuple(int(o) for o in offset.split(","))
-        if len(offset) != 2:
-            logger.warning("[A{:06}] (P4) Unusual %O directive value only has a single number: {!r}.".format(oeis_id, line_O))
-
-    # ========== process K directive
-
-    assert len(dv['K']) == 1 # we expect precisely one %K line.
-    keywords = dv['K'][0]
+    # We parse the keywords first, they may influence the warnings.
 
     keywords = keywords.split(",")
 
@@ -300,10 +280,9 @@ def parse_main_content(oeis_id, main_content):
         if unexpected_keyword == "":
             logger.warning("[A{:06}] (P13) Unexpected empty keyword in %K directive value.".format(oeis_id))
         else:
-            # TODO: move to checker
             logger.warning("[A{:06}] (P15) Unexpected keyword '{}' in %K directive value.".format(oeis_id, unexpected_keyword))
 
-    # Check for duplicate keywords. (Keep here)
+    # Check for duplicate keywords.
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
@@ -313,24 +292,79 @@ def parse_main_content(oeis_id, main_content):
     # Canonify keywords: remove empty keywords and duplicates.
     # We do not sort.
 
-    canon = []
+    canonized_keywords = []
     for keyword in keywords:
-        if not(keyword == "" or keyword in canon):
-            canon.append(keyword)
+        if not (keyword == "" or keyword in canonized_keywords):
+            canonized_keywords.append(keyword)
 
-    keywords = canon
-    del canon
+
+    # ========== process %I directive
+
+    if identification == "":
+        identification = None
+    else:
+        if identification_pattern.match(identification) is None:
+            logger.warning("[A{:06}] (P14) Unusual %I directive value: '{}'.".format(oeis_id, identification))
+
+    # ========== process value directives (%S/%T/%U and %V/%W/%X)
+
+    assert stu_values is not None
+
+    if len(stu_values) == 0:
+        logger.warning("[A{:06}] (P03) No values listed (empty %S directive).".format(oeis_id))
+
+    # Merge STU values and VWX values (if the latter are present).
+
+    if vwx_values is None:
+        main_values = stu_values
+    else:
+        assert any(vwx_value < 0 for vwx_value in vwx_values)
+        assert len(stu_values) == len(vwx_values)
+        assert [abs(v) for v in vwx_values] == stu_values
+        main_values = vwx_values
+
+    if any(value < 0 for value in main_values):
+        if "sign" not in keywords:
+            logger.warning("[A{:06}] (Pxx) negative values are present, but 'sign' keyword is missing.".format(oeis_id))
+
+    if len(main_values) > 0:
+        max_digits = max(digits(v) for v in main_values)
+        if max_digits > 1000:
+            logger.warning("[A{:06}] (Pxx) Sequence contains entries up to {} digits.".format(oeis_id, max_digits))
+
+    # ========== process %A directive
+
+    if author is None:
+        logger.warning("[A{:06}] (P01) Missing %A directive.".format(oeis_id))
+
+    # ========== process %O directive
+
+    if offset is None:
+        logger.warning("[A{:06}] (P02) Missing %O directive.".format(oeis_id))
+        offset_a = None
+        offset_b = None
+    else:
+        offset_values = [int(o) for o in offset.split(",")]
+        assert len(offset_values) in [1, 2]
+        if len(offset_values) == 1:
+            logger.warning("[A{:06}] (P04) The %O directive value only has a single number ({}).".format(oeis_id, offset_values[0]))
+            offset_a = offset_values[0]
+            offset_b = None
+        else:
+            offset_a = offset_values[0]
+            offset_b = offset_values[1]
 
     # Return the data parsed from the main_content.
 
-    return (identification, main_values, name, offset, keywords)
+    return (identification, main_values, name, comments, detailed_references, links, formulas, examples,
+            maple_programs, mathematica_programs, other_programs, cross_references, canonized_keywords, offset_a, offset_b, author, extensions_and_errors)
 
 def parse_bfile_content(oeis_id, bfile_content):
 
     lines = bfile_content.split("\n")
 
     indexes = []
-    values = []
+    values  = []
 
     for (line_nr, line) in enumerate(lines, 1):
 
@@ -352,7 +386,7 @@ def parse_bfile_content(oeis_id, bfile_content):
         value = int(match.group(2))
 
         if len(indexes) > 0 and (index != indexes[-1] + 1):
-            logger.error("[A{:06}] (P8) b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
+            logger.error("[A{:06}] (P08) b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
             break
 
         indexes.append(index)
@@ -365,97 +399,157 @@ def parse_bfile_content(oeis_id, bfile_content):
 
     return (first_index, values)
 
+
 def parse_oeis_content(oeis_id, main_content, bfile_content):
 
-    (identification, main_values, name, offset, keywords) = parse_main_content (oeis_id, main_content)
-    (bfile_first_index, bfile_values)                     = parse_bfile_content(oeis_id, bfile_content)
+    (identification, main_values, name, comments, detailed_references, links, formulas, examples,
+     maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) = \
+        parse_main_content (oeis_id, main_content)
+
+    (bfile_first_index, bfile_values) = parse_bfile_content(oeis_id, bfile_content)
 
     # Merge values obtained from S/T/U or V/W/X directives in main_content with the b-file values.
 
     if not len(bfile_values) >= len(main_values):
-        logger.warning("[A{:06}] (P7) Main file has more values than b-file (main: {}, b-file: {}).".format(oeis_id, len(main_values), len(bfile_values)))
+        logger.warning("[A{:06}] (P07) Main file has more values than b-file (main: {}, b-file: {}).".format(oeis_id, len(main_values), len(bfile_values)))
 
     if all(bfile_values[i] == main_values[i] for i in range(min(len(main_values), len(bfile_values)))):
         # The values are fully consistent.
         # Use the one that has the most entries.
         values = bfile_values if len(bfile_values) > len(main_values) else main_values
     else:
-        logger.error("[A{:06}] (P5) Main/b-file values mismatch. Falling back on main values.".format(oeis_id))
-        logger.info ("[A{:06}]     main values ........ : {}...".format(oeis_id, main_values[:10]))
-        logger.info ("[A{:06}]     b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
+        logger.error("[A{:06}] (P05) Main/b-file values mismatch. Falling back on main values.".format(oeis_id))
+        logger.info ("[A{:06}]       main values ........ : {}...".format(oeis_id, main_values[:10]))
+        logger.info ("[A{:06}]       b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
 
         values = main_values  # Probably the safest choice.
 
-    if (len(offset) > 0) and (offset[0] != bfile_first_index):
-            logger.error("[A{:06}] (P6) %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
+    # TODO: move to checker
+    #if (o and (offset[0] != bfile_first_index):
+    #        logger.error("[A{:06}] (P6) %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
 
-    indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
-    if len(indexes_where_magnitude_exceeds_1) > 0:
-        first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
-    else:
-        first_index_where_magnitude_exceeds_1 = 1
+    # TODO: move to checker
+    #indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
+    #if len(indexes_where_magnitude_exceeds_1) > 0:
+    #    first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
+    #else:
+    #    first_index_where_magnitude_exceeds_1 = 1
 
-    if len(offset) > 1 and (offset[1] != first_index_where_magnitude_exceeds_1):
-        logger.error("[A{:06}] (P9) %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
+    # TODO: move to checker
+    #if len(offset) > 1 and (offset[1] != first_index_where_magnitude_exceeds_1):
+    #    logger.error("[A{:06}] (P9) %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
 
     # Return parsed values.
 
-    return OeisEntry(oeis_id, identification, values, name, offset, keywords)
+    return OeisEntry(oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
+                     maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors)
 
-def process_database(database_filename):
+def create_database_schema(dbconn):
+    """Ensure that the 'oeis_entries' table is present in the database."""
 
-    if not os.path.exists(database_filename):
-        logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename))
+    schema = """
+             CREATE TABLE IF NOT EXISTS oeis_entries (
+                 oeis_id               INTEGER PRIMARY KEY NOT NULL, -- OEIS ID number.
+                 identification        TEXT,
+                 value_list            TEXT,
+                 name                  TEXT NOT NULL,
+                 comments              TEXT,
+                 detailed_references   TEXT,
+                 links                 TEXT,
+                 formulas              TEXT,
+                 examples              TEXT,
+                 maple_programs        TEXT,
+                 mathematica_programs  TEXT,
+                 other_programs        TEXT,
+                 cross_references      TEXT,
+                 keywords              TEXT NOT NULL,
+                 offset_a              INTEGER,
+                 offset_b              INTEGER,
+                 author                TEXT,
+                 extensions_and_errors TEXT
+             );
+             """
+
+    # Remove superfluous whitespace in SQL statement.
+    schema = "\n".join(line[13:] for line in schema.split("\n"))[1:-1]
+
+    # Execute the schema creation statement.
+
+    dbconn.execute(schema)
+
+def process_oeis_entry(oeis_entry):
+
+    (oeis_id, main_content, bfile_content) = oeis_entry
+
+    parsed_entry = parse_oeis_content(oeis_id, main_content, bfile_content)
+
+    result = (
+        parsed_entry.oeis_id,
+        parsed_entry.identification,
+        #gzip.compress((",".join(str(value) for value in parsed_entry.values)).encode("ASCII")),
+        ",".join(str(value) for value in parsed_entry.values),
+        parsed_entry.name,
+        parsed_entry.comments,
+        parsed_entry.detailed_references,
+        parsed_entry.links,
+        parsed_entry.formulas,
+        parsed_entry.examples,
+        parsed_entry.maple_programs,
+        parsed_entry.mathematica_programs,
+        parsed_entry.other_programs,
+        parsed_entry.cross_references,
+        ",".join(str(keyword) for keyword in parsed_entry.keywords),
+        parsed_entry.offset_a,
+        parsed_entry.offset_b,
+        parsed_entry.author,
+        parsed_entry.extensions_and_errors
+    )
+
+    return result
+
+def process_database(database_filename_in):
+
+    if not os.path.exists(database_filename_in):
+        logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename_in))
         return
+
+    (root, ext) = os.path.splitext(database_filename_in)
+
+    database_filename_out = root + "_parsed" + ext
+
+    if os.path.exists(database_filename_out):
+        logger.info("Removing stale file '{}' ...".format(database_filename_out))
+        os.remove(database_filename_out)
 
     # ========== fetch and process database entries, ordered by oeis_id.
 
-    entries = []
+    BATCH_SIZE = 1000
 
     with start_timer() as timer:
-        dbconn = sqlite3.connect(database_filename)
-        try:
-            dbcursor = dbconn.cursor()
-            try:
-                dbcursor.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
-                while True:
-                    oeis_entry = dbcursor.fetchone()
-                    if oeis_entry is None:
-                        break
-                    (oeis_id, main_content, bfile_content) = oeis_entry
-                    if oeis_id % 10 == 0:
-                        logger.log(logging.PROGRESS, "Processing [A{:06}] ...".format(oeis_id))
-                    entry = parse_oeis_content(oeis_id, main_content, bfile_content)
-                    entries.append(entry)
-            finally:
-                dbcursor.close()
-        finally:
-            dbconn.close()
+        with close_when_done(sqlite3.connect(database_filename_in)) as dbconn_in, close_when_done(dbconn_in.cursor()) as dbcursor_in:
+            with close_when_done(sqlite3.connect(database_filename_out)) as dbconn_out, close_when_done(dbconn_out.cursor()) as dbcursor_out:
 
-        logger.info("Parsed {} entries in {}.".format(len(entries), timer.duration_string()))
+                create_database_schema(dbconn_out)
+                
+                with concurrent.futures.ProcessPoolExecutor() as pool:
 
-    # ========== write pickled versions.
+                    dbcursor_in.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
 
-    (root, ext) = os.path.splitext(database_filename)
+                    while True:
 
-    logger.info("Writing pickle file ...")
-    with start_timer() as timer:
-        filename_pickle = os.path.join(root + ".pickle")
-        with open(filename_pickle, "wb") as f:
-            pickle.dump(entries, f)
-        logger.info("Wrote all {} entries to '{}' in {}.".format(len(entries), filename_pickle, timer.duration_string()))
+                        oeis_entries = dbcursor_in.fetchmany(BATCH_SIZE)
+                        if len(oeis_entries) == 0:
+                            break
 
-    WRITE_REDUCED_THRESHOLD = 10000
+                        logger.log(logging.PROGRESS, "Processing [A{:06}] -- [A{:06}] ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
 
-    if len(entries) > WRITE_REDUCED_THRESHOLD:
-        logger.info("Writing reduced-size pickle file ...")
-        reduced_entries = entries[:WRITE_REDUCED_THRESHOLD]
-        with start_timer() as timer:
-            filename_pickle_reduced = root + "-{}.pickle".format(len(reduced_entries))
-            with open(filename_pickle_reduced, "wb") as f:
-                pickle.dump(reduced_entries, f)
+                        query = "INSERT INTO oeis_entries(oeis_id, identification, value_list, name, comments, detailed_references, links, formulas, examples, maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
 
-            logger.info("Wrote first {} entries to '{}' in {}.".format(len(reduced_entries), filename_pickle_reduced, timer.duration_string()))
+                        dbcursor_out.executemany(query, pool.map(process_oeis_entry, oeis_entries))
+                        
+                        dbconn_out.commit()
+
+        logger.info("Parsed complete database in {}.".format(timer.duration_string()))
 
 def main():
 
@@ -463,7 +557,7 @@ def main():
         print("Please specify the name of an OEIS database in Sqlite3 format.")
         return
 
-    database_filename = sys.argv[1]
+    database_filename_in = sys.argv[1]
 
     logging.PROGRESS = logging.DEBUG + 5
     logging.addLevelName(logging.PROGRESS, "PROGRESS")
@@ -471,12 +565,8 @@ def main():
     FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
-    try:
-        with start_timer() as timer:
-            process_database(database_filename)
-            logger.info("Database processing completed in {}.".format(timer.duration_string()))
-    finally:
-        logging.shutdown()
+    with shutdown_when_done(logging):
+        process_database(database_filename_in)
 
 if __name__ == "__main__":
     main()
