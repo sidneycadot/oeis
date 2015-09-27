@@ -75,16 +75,19 @@ bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 def digits(n):
     return len(str(abs(n)))
 
+
 def parse_optional_multiline_directive(dv, directive):
     if directive not in dv:
         return None
     else:
         return "".join(line + "\n" for line in dv[directive])
 
+
 def parse_mandatory_singleline_directive(dv, directive):
     assert directive in dv
     assert len(dv[directive]) == 1
     return dv[directive][0]
+
 
 def parse_optional_singleline_directive(dv, directive):
     if directive not in dv:
@@ -92,6 +95,7 @@ def parse_optional_singleline_directive(dv, directive):
     else:
         assert len(dv[directive]) == 1
         return dv[directive][0]
+
 
 def parse_value_directives(dv, directives):
 
@@ -127,6 +131,7 @@ def parse_value_directives(dv, directives):
     assert ",".join(str(value) for value in values) == lines
     return values
 
+
 def check_keywords(oeis_id, keywords):
 
     # Check forbidden combinations of keywords.
@@ -150,7 +155,7 @@ def check_keywords(oeis_id, keywords):
 
     if "allocated"  in keywords and len(keywords) > 1:
         logger.warning("A{:06} (Pxx) Keyword 'allocated' occurs in combination with other keywords, which should not happen.".format(oeis_id))
-        
+
     if "allocating" in keywords and len(keywords) > 1:
         logger.warning("A{:06} (Pxx) Keyword 'allocating' occurs in combination with other keywords, which should not happen.".format(oeis_id))
 
@@ -165,6 +170,7 @@ def check_keywords(oeis_id, keywords):
     if not(("allocated" in keywords) or ("allocating" in keywords) or ("dead" in keywords) or ("recycled" in keywords)):
         if ("nonn" not in keywords) and ("sign" not in keywords):
             logger.warning("A{:06} (Pxx) Keyword 'nonn' or 'sign' are both absent.".format(oeis_id))
+
 
 def parse_main_content(oeis_id, main_content):
 
@@ -272,7 +278,7 @@ def parse_main_content(oeis_id, main_content):
 
     keywords = keywords.split(",")
 
-    # Check for unexpected keywords. TODO: move to checker
+    # Check for unexpected keywords.
 
     unexpected_keywords = set(keywords) - expected_keywords_set
 
@@ -296,7 +302,6 @@ def parse_main_content(oeis_id, main_content):
     for keyword in keywords:
         if not (keyword == "" or keyword in canonized_keywords):
             canonized_keywords.append(keyword)
-
 
     # ========== process %I directive
 
@@ -358,6 +363,7 @@ def parse_main_content(oeis_id, main_content):
 
     return (identification, main_values, name, comments, detailed_references, links, formulas, examples,
             maple_programs, mathematica_programs, other_programs, cross_references, canonized_keywords, offset_a, offset_b, author, extensions_and_errors)
+
 
 def parse_bfile_content(oeis_id, bfile_content):
 
@@ -424,25 +430,27 @@ def parse_oeis_content(oeis_id, main_content, bfile_content):
 
         values = main_values  # Probably the safest choice.
 
-    # TODO: move to checker
-    #if (o and (offset[0] != bfile_first_index):
-    #        logger.error("[A{:06}] (P6) %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset[0], bfile_first_index))
+    if offset_a is not None:
 
-    # TODO: move to checker
-    #indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
-    #if len(indexes_where_magnitude_exceeds_1) > 0:
-    #    first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
-    #else:
-    #    first_index_where_magnitude_exceeds_1 = 1
+        if offset_a != bfile_first_index:
+            logger.error("[A{:06}] (P06) %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset_a, bfile_first_index))
 
-    # TODO: move to checker
-    #if len(offset) > 1 and (offset[1] != first_index_where_magnitude_exceeds_1):
-    #    logger.error("[A{:06}] (P9) %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset[1], first_index_where_magnitude_exceeds_1))
+    if offset_b is not None:
+
+        indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
+
+        if len(indexes_where_magnitude_exceeds_1) > 0:
+
+            first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
+
+            if offset_b != first_index_where_magnitude_exceeds_1:
+                logger.error("[A{:06}] (P09) %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset_b, first_index_where_magnitude_exceeds_1))
 
     # Return parsed values.
 
     return OeisEntry(oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
                      maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors)
+
 
 def create_database_schema(dbconn):
     """Ensure that the 'oeis_entries' table is present in the database."""
@@ -477,6 +485,7 @@ def create_database_schema(dbconn):
 
     dbconn.execute(schema)
 
+
 def process_oeis_entry(oeis_entry):
 
     (oeis_id, main_content, bfile_content) = oeis_entry
@@ -507,6 +516,7 @@ def process_oeis_entry(oeis_entry):
 
     return result
 
+
 def process_database(database_filename_in):
 
     if not os.path.exists(database_filename_in):
@@ -530,7 +540,7 @@ def process_database(database_filename_in):
             with close_when_done(sqlite3.connect(database_filename_out)) as dbconn_out, close_when_done(dbconn_out.cursor()) as dbcursor_out:
 
                 create_database_schema(dbconn_out)
-                
+
                 with concurrent.futures.ProcessPoolExecutor() as pool:
 
                     dbcursor_in.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
@@ -541,15 +551,16 @@ def process_database(database_filename_in):
                         if len(oeis_entries) == 0:
                             break
 
-                        logger.log(logging.PROGRESS, "Processing [A{:06}] -- [A{:06}] ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
+                        logger.log(logging.PROGRESS, "Processing OEIS entries A{:06} to A{:06} ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
 
                         query = "INSERT INTO oeis_entries(oeis_id, identification, value_list, name, comments, detailed_references, links, formulas, examples, maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
 
                         dbcursor_out.executemany(query, pool.map(process_oeis_entry, oeis_entries))
-                        
+
                         dbconn_out.commit()
 
         logger.info("Parsed complete database in {}.".format(timer.duration_string()))
+
 
 def main():
 
@@ -567,6 +578,7 @@ def main():
 
     with shutdown_when_done(logging):
         process_database(database_filename_in)
+
 
 if __name__ == "__main__":
     main()
