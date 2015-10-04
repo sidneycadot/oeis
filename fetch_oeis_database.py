@@ -22,7 +22,8 @@ import concurrent.futures
 
 from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
 from timer                   import start_timer
-from exit_scope              import close_when_done, shutdown_when_done
+from exit_scope              import close_when_done
+from setup_logging           import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -373,7 +374,13 @@ def database_update_cycle_loop(database_filename):
 
     while True:
 
-        database_update_cycle(database_filename)
+        try:
+            database_update_cycle(database_filename)
+        except KeyboardInterrupt:
+            logger.info("Keyboard interrupt request received, ending database update cycle loop...")
+            break
+        except BaseException as exception:
+            logger.error("Error while performing database update cycle: '{}'.".format(exception))
 
         # Pause between update cycles.
         pause = max(300.0, random.gauss(1800.0, 600.0))
@@ -385,10 +392,9 @@ def main():
 
     database_filename = "oeis.sqlite3"
 
-    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
-    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+    logfile = "fetch_oeis_database_%Y%m%d_%H%M%S.log"
 
-    with shutdown_when_done(logging):
+    with setup_logging(logfile):
         database_update_cycle_loop(database_filename)
 
 if __name__ == "__main__":
