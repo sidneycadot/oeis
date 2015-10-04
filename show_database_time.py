@@ -7,6 +7,8 @@ import logging
 import sqlite3
 import numpy as np
 from matplotlib import pyplot as plt
+from exit_scope    import close_when_done
+from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -18,28 +20,19 @@ def show_entries(database_filename):
 
     t_current = time.time()
 
-    dbconn = sqlite3.connect(database_filename)
-    try:
-        dbcursor = dbconn.cursor()
-        try:
-            query = "SELECT oeis_id, t1, t2 FROM oeis_entries;"
-            dbcursor.execute(query)
-            data = dbcursor.fetchall()
-        finally:
-            dbcursor.close()
-    finally:
-        dbconn.close()
+    with close_when_done(sqlite3.connect(database_filename)) as dbconn, close_when_done(dbconn.cursor()) as dbcursor:
+        query = "SELECT oeis_id, t1, t2 FROM oeis_entries;"
+        dbcursor.execute(query)
+        data = dbcursor.fetchall()
 
-    dt = np.dtype([
+    data_dtype = np.dtype([
             ("oeis_id", np.int),
             ("t1"     , np.float64),
             ("t2"     , np.float64)
         ]
     )
 
-    data = np.array(data, dtype = dt)
-
-    # print(data.shape, data.dtype)
+    data = np.array(data, dtype = data_dtype)
 
     t1      = data["t1"]
     t2      = data["t2"]
@@ -73,10 +66,11 @@ def show_entries(database_filename):
     #bins = np.logspace(-10.0, +20.0, 200)
     #plt.hist(np.log10(priority), bins = bins, log = True)
 
-    range_max = 0.6
-    plt.hist(priority, range = (0, range_max), bins = 200, log = True)
+    RANGE_MAX = 0.5
 
-    plt.xlabel("priority ({} values > {:.1f})".format(np.sum(priority > range_max), range_max))
+    plt.hist(priority, range = (0, RANGE_MAX), bins = 200, log = True)
+
+    plt.xlabel("priority ({} values > {:.1f})".format(np.sum(priority > RANGE_MAX), RANGE_MAX))
 
     plt.subplot(338)
     plt.hist(stability / 3600.0, bins = 200, log = True)
@@ -92,13 +86,8 @@ def main():
 
     database_filename = sys.argv[1]
 
-    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
-    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
-
-    try:
+    with setup_logging(None):
         show_entries(database_filename)
-    finally:
-        logging.shutdown()
 
 if __name__ == "__main__":
     main()
