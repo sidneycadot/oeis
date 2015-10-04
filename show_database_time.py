@@ -48,7 +48,7 @@ def show_entries(database_filename):
     age       = t_current - t2
     stability = t2 - t1
 
-    score = age / np.maximum(stability, 1e-6)
+    priority = age / np.maximum(stability, 1e-6)
 
     plt.subplot(331)
     plt.xlabel("oeis id")
@@ -70,10 +70,13 @@ def show_entries(database_filename):
     plt.plot(stability / 3600.0, age / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(336)
-    bins = np.logspace(-4.0, +2.0, 200)
-    plt.hist(np.log10(score), bins = bins, log = True)
-    plt.xscale("log")
-    plt.xlabel("score")
+    #bins = np.logspace(-10.0, +20.0, 200)
+    #plt.hist(np.log10(priority), bins = bins, log = True)
+
+    range_max = 0.6
+    plt.hist(priority, range = (0, range_max), bins = 200, log = True)
+
+    plt.xlabel("priority ({} values > {:.1f})".format(np.sum(priority > range_max), range_max))
 
     plt.subplot(338)
     plt.hist(stability / 3600.0, bins = 200, log = True)
