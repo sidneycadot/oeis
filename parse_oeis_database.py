@@ -10,13 +10,13 @@ import pickle
 import collections
 import logging
 import sqlite3
-import lzma, gzip
 import concurrent.futures
 
-from OeisEntry  import OeisEntry
-from charmap    import acceptable_characters
-from timer      import start_timer
-from exit_scope import close_when_done, shutdown_when_done
+from OeisEntry     import OeisEntry
+from charmap       import acceptable_characters
+from timer         import start_timer
+from exit_scope    import close_when_done
+from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -137,39 +137,39 @@ def check_keywords(oeis_id, keywords):
     # Check forbidden combinations of keywords.
 
     if "tabl" in keywords and "tabf" in keywords:
-        logger.warning("A{:06} (Pxx) Keywords 'tabl' and 'tabf' occur together, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P21) Keywords 'tabl' and 'tabf' occur together, which should not happen.".format(oeis_id))
 
     if "nice" in keywords and "less" in keywords:
-        logger.warning("A{:06} (Pxx) Keywords 'nice' and 'less' occur together, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P22) Keywords 'nice' and 'less' occur together, which should not happen.".format(oeis_id))
 
     if "easy" in keywords and "hard" in keywords:
-        logger.warning("A{:06} (Pxx) Keywords 'easy' and 'hard' occur together, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P23) Keywords 'easy' and 'hard' occur together, which should not happen.".format(oeis_id))
 
     if "nonn" in keywords and "sign" in keywords:
-        logger.warning("A{:06} (Pxx) Keywords 'nonn' and 'sign' occur together, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P24) Keywords 'nonn' and 'sign' occur together, which should not happen.".format(oeis_id))
 
     if "full" in keywords and "more" in keywords:
-        logger.warning("A{:06} (Pxx) Keywords 'full' and 'more' occur together, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P25) Keywords 'full' and 'more' occur together, which should not happen.".format(oeis_id))
 
     # Check exclusive keywords.
 
     if "allocated"  in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (Pxx) Keyword 'allocated' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P26) Keyword 'allocated' occurs in combination with other keywords, which should not happen.".format(oeis_id))
 
     if "allocating" in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (Pxx) Keyword 'allocating' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P27) Keyword 'allocating' occurs in combination with other keywords, which should not happen.".format(oeis_id))
 
     if "dead" in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (Pxx) Keyword 'dead' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P28) Keyword 'dead' occurs in combination with other keywords, which should not happen.".format(oeis_id))
 
     if "recycled" in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (Pxx) Keyword 'recycled' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+        logger.warning("A{:06} (P29) Keyword 'recycled' occurs in combination with other keywords, which should not happen.".format(oeis_id))
 
     # Check presence of either 'none' or 'sign' keyword.
 
     if not(("allocated" in keywords) or ("allocating" in keywords) or ("dead" in keywords) or ("recycled" in keywords)):
         if ("nonn" not in keywords) and ("sign" not in keywords):
-            logger.warning("A{:06} (Pxx) Keyword 'nonn' or 'sign' are both absent.".format(oeis_id))
+            logger.warning("A{:06} (P30) Keyword 'nonn' or 'sign' are both absent.".format(oeis_id))
 
 
 def parse_main_content(oeis_id, main_content):
@@ -208,7 +208,7 @@ def parse_main_content(oeis_id, main_content):
             if directive_value.startswith(" "):
                 directive_value = directive_value[1:]
                 if directive_value == "":
-                    logger.warning("[A{:06}] (Pxx) The %{} directive has a trailing space but no value.".format(oeis_id, directive))
+                    logger.warning("[A{:06}] (P18) The %{} directive has a trailing space but no value.".format(oeis_id, directive))
             else:
                 logger.warning("[A{:06}] (P16) The %{} directive should have a space before the start of its value.".format(oeis_id, directive))
 
@@ -331,12 +331,12 @@ def parse_main_content(oeis_id, main_content):
 
     if any(value < 0 for value in main_values):
         if "sign" not in keywords:
-            logger.warning("[A{:06}] (Pxx) negative values are present, but 'sign' keyword is missing.".format(oeis_id))
+            logger.warning("[A{:06}] (P19) negative values are present, but 'sign' keyword is missing.".format(oeis_id))
 
     if len(main_values) > 0:
         max_digits = max(digits(v) for v in main_values)
         if max_digits > 1000:
-            logger.warning("[A{:06}] (Pxx) Sequence contains extremely large values (up to {} digits).".format(oeis_id, max_digits))
+            logger.warning("[A{:06}] (P20) Sequence contains extremely large values (up to {} digits).".format(oeis_id, max_digits))
 
     # ========== process %A directive
 
@@ -570,13 +570,10 @@ def main():
 
     database_filename_in = sys.argv[1]
 
-    logging.PROGRESS = logging.DEBUG + 5
-    logging.addLevelName(logging.PROGRESS, "PROGRESS")
+    (root, ext) = os.path.splitext(database_filename_in)
+    logfile = root + "_parsed.log"
 
-    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
-    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
-
-    with shutdown_when_done(logging):
+    with setup_logging(logfile):
         process_database_entries(database_filename_in)
 
 
