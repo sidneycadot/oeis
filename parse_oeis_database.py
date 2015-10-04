@@ -207,6 +207,8 @@ def parse_main_content(oeis_id, main_content):
         if directive_value != "":
             if directive_value.startswith(" "):
                 directive_value = directive_value[1:]
+                if directive_value == "":
+                    logger.warning("[A{:06}] (Pxx) The %{} directive has a trailing space but no value.".format(oeis_id, directive))
             else:
                 logger.warning("[A{:06}] (P16) The %{} directive should have a space before the start of its value.".format(oeis_id, directive))
 
