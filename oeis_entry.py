@@ -1,3 +1,4 @@
+"""A module to parse a fetched OEIS entry and its associated b-file into an object representation."""
 
 import re
 import logging
