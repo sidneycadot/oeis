@@ -1,7 +1,11 @@
 #! /usr/bin/env python3
 
+import os
+import sys
 import logging
-import pickle
+import sqlite3
+import json
+
 import numpy as np
 from fractions import Fraction, gcd
 from fraction_based_linear_algebra import inverse_matrix
@@ -11,6 +15,10 @@ from collections import OrderedDict
 from catalog import read_catalog_files
 from timer import start_timer
 import concurrent.futures
+
+from oeis_entry    import parse_oeis_entry
+from exit_scope    import close_when_done
+from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +94,9 @@ def solution_to_string(solution, terms):
 
     if divisor != 1:
         s = "(" + s + ") / {}".format(divisor)
+
+    if s == "":
+        s = "0"
 
     return s
 
@@ -206,7 +217,7 @@ def find_sequence_solution(work):
             lookup = OrderedDict((i + first_index, v) for (i, v) in enumerate(oeis_entry.values))
             solution = solve_lineair_equation(oeis_entry.oeis_id, lookup, terms)
 
-    return (oeis_entry, solution) # None or a 1-dinmensional ndarray of coefficients
+    return (oeis_entry, solution) # None or a 1-dimensional ndarray of coefficients
 
 def make_terms(max_beta_poly, offset_alpha_beta):
     terms = []
@@ -221,73 +232,112 @@ def make_terms(max_beta_poly, offset_alpha_beta):
                 terms.append(term)
     return terms
 
-def solve_polynomial_sequences():
+def process_oeis_entry(work):
 
-    filename = "oeis_v20150922.pickle"
-    with open(filename, "rb") as f:
-        oeis_entries = pickle.load(f)
+    (oeis_id, main_content, bfile_content, terms) = work
 
-    solved = set()
+    parsed_entry = parse_oeis_entry(oeis_id, main_content, bfile_content)
 
-    with open("polynomial_solutions.txt", "w") as f, concurrent.futures.ProcessPoolExecutor() as executor:
-        for degree in range(1, 101):
-            terms = [Term(None, None, beta) for beta in range(degree)]
-            work = [(oeis_entry, terms) for oeis_entry in oeis_entries if oeis_entry.oeis_id not in solved and len(oeis_entry.offset) >= 1]
-            for (oeis_entry, solution) in executor.map(find_sequence_solution, work):
-                if solution is not None:
-                    solved.add(oeis_entry.oeis_id)
-                    print("A{:06d} first_index: {} solution found: terms = {}, solution = {}".format(oeis_entry.oeis_id, oeis_entry.offset[0], "[{}]".format(", ".join(repr(t) for t in terms)), solution))
-                    print("A{:06d} first_index: {} solution found: terms = {}, solution = {}".format(oeis_entry.oeis_id, oeis_entry.offset[0], "[{}]".format(", ".join(repr(t) for t in terms)), solution), file = f, flush = True)
-                    print("degree = {}, solutions found so far: {}".format(degree, len(solved)), flush = True)
+    if parsed_entry.offset_a is None:
+        logger.warning("A{:06d} Skipping sequence without declared first index.".format(parsed_entry.oeis_id))
+        solution = None
+    else:
+        max_value =  max(abs(v) for v in parsed_entry.values)
+        max_value_digit_count = len(str(max_value))
 
-def solve_sequences():
+        if max_value_digit_count >= 10000:
+            logger.info("[A{:06d}] Skipping sequence with very large values ({} digits).".format(parsed_entry.oeis_id, max_value_digit_count))
+            solution = None
+        else:
+            first_index = parsed_entry.offset_a
+            # Turn the sequence data in a lookup dictionary.
+            lookup = OrderedDict((first_index + i, value) for (i, value) in enumerate(parsed_entry.values))
+            solution = solve_lineair_equation(parsed_entry.oeis_id, lookup, terms)
 
-    catalog = read_catalog_files("catalog_files/*.json")
+    return (parsed_entry, solution)
 
-    filename = "oeis_with_bfile-10000.pickle"
+def poly_terms_generator():
+    n = 0
+    filename_out = "solutions_poly_{}.txt".format(n)
+    terms = [Term(None, None, i) for i in range(n - 1)]
+    yield (filename_out, terms)
 
-    with open(filename, "rb") as f:
-        oeis_entries = pickle.load(f)
 
-    terms = make_terms(5, [(3, 3)])
+def solve_linear_recurrences(database_filename_in, terms, exclude_entries = None):
 
-    #solution = find_sequence_solution((oeis_entries[8553 - 1], terms))
-    #return
+    if not os.path.exists(database_filename_in):
+        logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename_in))
+        return
 
-    work = [(oeis_entry, terms) for oeis_entry in oeis_entries if oeis_entry.oeis_id not in catalog and len(oeis_entry.offset) >= 1]
+    if exclude_entries is None:
+        exclude_entries = frozenset()
 
-    logger.info("size of work ...... : {:6d}".format(len(work)))
-    logger.info("terms ............. : {}".format(", ".join(repr(t) for t in terms)))
+    # ========== fetch and process database entries, ordered by oeis_id.
 
-    with open("solutions.json", "w") as f, concurrent.futures.ProcessPoolExecutor() as executor:
+    BATCH_SIZE = 1000
 
-        for (oeis_entry, solution) in executor.map(find_sequence_solution, work):
-            if solution is not None:
-                #print("[{}] ({} elements) solution: {}".format(oeis_entry, len(oeis_entry.values), solution))
-                (coefficients, divisor) = solution
-                while len(coefficients) > 0 and coefficients[-1] == 0:
-                    coefficients = coefficients[:-1]
+    with start_timer() as timer:
 
-                #print(json_entry)
-                #print(json_entry, file = f)
-            if oeis_entry.oeis_id % 10 == 0:
-                logger.log(logging.PROGRESS, "[{}] processed.".format(oeis_entry))
+        with close_when_done(sqlite3.connect(database_filename_in)) as dbconn_in, close_when_done(dbconn_in.cursor()) as dbcursor_in:
+
+            with concurrent.futures.ProcessPoolExecutor() as pool:
+
+                dbcursor_in.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
+
+                while True:
+
+                    oeis_entries = dbcursor_in.fetchmany(BATCH_SIZE)
+                    if len(oeis_entries) == 0:
+                        break
+
+                    logger.log(logging.PROGRESS, "Processing OEIS entries A{:06} to A{:06} ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
+
+                    work = [(oeis_id, main_content, bfile_content, terms) for (oeis_id, main_content, bfile_content) in oeis_entries if "A{:06d}".format(oeis_id) not in exclude_entries]
+
+                    for (oeis_entry, solution) in pool.map(process_oeis_entry, work):
+                        if solution is not None:
+                            yield (str(oeis_entry), solution)
+
+        logger.info("Processed all database entries in {}.".format(timer.duration_string()))
+
+def solve_polynomials(database_filename_in):
+
+    exclude_entries = set()
+
+    maxdegree = 0
+    while True:
+
+        # Can we read the solutions from a file?
+        solutions_filename = "polynomial_solutions_{}.txt".format(maxdegree)
+
+        if os.path.exists(solutions_filename):
+            with open(solutions_filename, "r") as f:
+                solutions = json.load(f)
+            logger.info("Read {} entries from '{}'.".format(len(solutions), solutions_filename))
+        else:
+            terms = [Term(None, None, degree) for degree in range(maxdegree + 1)]
+            solutions = list(solve_linear_recurrences(database_filename_in, terms, exclude_entries))
+            with open(solutions_filename, "w") as f:
+                json.dump(solutions, f)
+            logger.info("Wrote {} entries to '{}'.".format(len(solutions), solutions_filename))
+
+        exclude_entries |= set(oeis_string_id for (oeis_string_id, solution) in solutions)
+
+        maxdegree += 1
 
 def main():
 
-    logging.PROGRESS = logging.DEBUG + 5
-    logging.addLevelName(logging.PROGRESS, "PROGRESS")
+    if len(sys.argv) != 2:
+        print("Please specify the name of an OEIS database in Sqlite3 format.")
+        return
 
-    FORMAT = "%(asctime)-15s | %(levelname)-8s | %(message)s"
-    logging.basicConfig(format = FORMAT, level = logging.DEBUG)
+    database_filename_in = sys.argv[1]
 
-    try:
-        with start_timer() as timer:
-            #solve_sequences()
-            solve_polynomial_sequences()
-            logger.info("Sequence solving completed in {}.".format(timer.duration_string()))
-    finally:
-        logging.shutdown()
+    logfile = "solve_linear_recurrence.log"
+
+    with setup_logging(logfile):
+        logging.getLogger("oeis_entry").setLevel(logging.CRITICAL)
+        solve_polynomials(database_filename_in)
 
 if __name__ == "__main__":
     main()
