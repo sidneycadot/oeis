@@ -78,7 +78,7 @@ def inverse_matrix(X):
     return XI[:, -n:]
 
 def stresstest(SIZE, REPEATS):
-    """Perform a randomized stress test on SIZExSIZE matrices."""
+    """Perform a randomized stress test on SIZE x SIZE matrices."""
 
     import time
     import random
@@ -110,10 +110,11 @@ def stresstest(SIZE, REPEATS):
 def main():
     """Perform stress tests on small and medium-sized matrices."""
 
+    stresstest(1, 500)
+    stresstest(2, 500)
     stresstest(3, 500)
     stresstest(4, 500)
     stresstest(5, 500)
-    stresstest(6, 500)
     stresstest(10, 50)
     stresstest(15, 50)
     stresstest(20, 50)
