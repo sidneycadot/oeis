@@ -113,7 +113,7 @@ def process_database_entries(database_filename_in):
                         if len(oeis_entries) == 0:
                             break
 
-                        logger.log(logging.PROGRESS, "Parsing OEIS entries A{:06} to A{:06} ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
+                        logger.log(logging.PROGRESS, "Processing OEIS entries A{:06} to A{:06} ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
 
                         query = "INSERT INTO oeis_entries(oeis_id, identification, value_list, name, comments, detailed_references, links, formulas, examples, maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
 
