@@ -295,8 +295,7 @@ def parse_main_content(oeis_id, main_content):
         if count > 1:
             logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
 
-    # Canonify keywords: remove empty keywords and duplicates.
-    # We do not sort.
+    # Canonify keywords: remove empty keywords and duplicates. We do not sort, though.
 
     canonized_keywords = []
     for keyword in keywords:
@@ -335,7 +334,7 @@ def parse_main_content(oeis_id, main_content):
     if len(main_values) > 0:
         max_digits = max(digits(v) for v in main_values)
         if max_digits > 1000:
-            logger.warning("[A{:06}] (Pxx) Sequence contains entries up to {} digits.".format(oeis_id, max_digits))
+            logger.warning("[A{:06}] (Pxx) Sequence contains extremely large values (up to {} digits).".format(oeis_id, max_digits))
 
     # ========== process %A directive
 
@@ -457,10 +456,10 @@ def create_database_schema(dbconn):
 
     schema = """
              CREATE TABLE IF NOT EXISTS oeis_entries (
-                 oeis_id               INTEGER PRIMARY KEY NOT NULL, -- OEIS ID number.
+                 oeis_id               INTEGER  PRIMARY KEY NOT NULL, -- OEIS ID number.
                  identification        TEXT,
                  value_list            TEXT,
-                 name                  TEXT NOT NULL,
+                 name                  TEXT     NOT NULL,
                  comments              TEXT,
                  detailed_references   TEXT,
                  links                 TEXT,
@@ -470,7 +469,7 @@ def create_database_schema(dbconn):
                  mathematica_programs  TEXT,
                  other_programs        TEXT,
                  cross_references      TEXT,
-                 keywords              TEXT NOT NULL,
+                 keywords              TEXT     NOT NULL,
                  offset_a              INTEGER,
                  offset_b              INTEGER,
                  author                TEXT,
@@ -495,7 +494,6 @@ def process_oeis_entry(oeis_entry):
     result = (
         parsed_entry.oeis_id,
         parsed_entry.identification,
-        #gzip.compress((",".join(str(value) for value in parsed_entry.values)).encode("ASCII")),
         ",".join(str(value) for value in parsed_entry.values),
         parsed_entry.name,
         parsed_entry.comments,
@@ -517,7 +515,7 @@ def process_oeis_entry(oeis_entry):
     return result
 
 
-def process_database(database_filename_in):
+def process_database_entries(database_filename_in):
 
     if not os.path.exists(database_filename_in):
         logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename_in))
@@ -551,7 +549,7 @@ def process_database(database_filename_in):
                         if len(oeis_entries) == 0:
                             break
 
-                        logger.log(logging.PROGRESS, "Processing OEIS entries A{:06} to A{:06} ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
+                        logger.log(logging.PROGRESS, "Parsing OEIS entries A{:06} to A{:06} ...".format(oeis_entries[0][0], oeis_entries[-1][0]))
 
                         query = "INSERT INTO oeis_entries(oeis_id, identification, value_list, name, comments, detailed_references, links, formulas, examples, maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
 
@@ -559,7 +557,7 @@ def process_database(database_filename_in):
 
                         dbconn_out.commit()
 
-        logger.info("Parsed complete database in {}.".format(timer.duration_string()))
+        logger.info("Processed all database entries in {}.".format(timer.duration_string()))
 
 
 def main():
@@ -577,7 +575,7 @@ def main():
     logging.basicConfig(format = FORMAT, level = logging.DEBUG)
 
     with shutdown_when_done(logging):
-        process_database(database_filename_in)
+        process_database_entries(database_filename_in)
 
 
 if __name__ == "__main__":
