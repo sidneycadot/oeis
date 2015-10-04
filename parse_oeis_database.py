@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# Code to analyze OEIS entries.
+# Code to process raw OEIS entries, by parsing them.
 
 import os
 import sys
@@ -22,7 +22,7 @@ def create_database_schema(dbconn):
              CREATE TABLE IF NOT EXISTS oeis_entries (
                  oeis_id               INTEGER  PRIMARY KEY NOT NULL, -- OEIS ID number.
                  identification        TEXT,
-                 value_list            TEXT,
+                 value_list            TEXT     NOT NULL,
                  name                  TEXT     NOT NULL,
                  comments              TEXT,
                  detailed_references   TEXT,
