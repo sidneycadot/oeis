@@ -329,9 +329,8 @@ def parse_main_content(oeis_id, main_content):
         assert [abs(v) for v in vwx_values] == stu_values
         main_values = vwx_values
 
-    if any(value < 0 for value in main_values):
-        if "sign" not in keywords:
-            logger.warning("[A{:06}] (P19) negative values are present, but 'sign' keyword is missing.".format(oeis_id))
+    if "dead" not in keywords and "sign" not in keywords and any(value < 0 for value in main_values):
+        logger.warning("[A{:06}] (P19) negative values are present, but 'sign' keyword is missing.".format(oeis_id))
 
     if len(main_values) > 0:
         max_digits = max(digits(v) for v in main_values)
