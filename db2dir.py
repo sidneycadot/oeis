@@ -67,12 +67,11 @@ def main():
 
     database_filename_in = sys.argv[1]
 
-    dirname_out = "/mnt/data/sidney/OEIS/oeis_repository"
+    (root, ext) = os.path.splitext(os.path.basename(database_filename_in))
 
-    (root, ext) = os.path.splitext(database_filename_in)
-    logfile = root + "_todir.log"
+    dirname_out = os.path.join("data", root + "_directory")
 
-    with setup_logging(logfile):
+    with setup_logging(None):
         process_database_entries(database_filename_in, dirname_out)
 
 if __name__ == "__main__":
