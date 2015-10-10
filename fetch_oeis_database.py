@@ -57,7 +57,7 @@ def find_highest_oeis_id():
 
     SLEEP_AFTER_FAILURE = 5.0
 
-    success_id =  262000 # We know a-priori that this entry exists.
+    success_id =  263000 # We know a-priori that this entry exists.
     failure_id = 1000000 # We know a-priori that this entry does not exist.
 
     # Do a binary search, looking for the success/failure boundary.
@@ -281,15 +281,20 @@ def update_database_entries_by_priority(dbconn, howmany):
 def update_database_entries_for_nonzero_time_window(dbconn):
     """ Re-fetch entries in the database that have a 0-second time window. These are entries that have been fetched only once."""
 
-    with close_when_done(dbconn.cursor()) as dbcursor:
-        dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
-        zero_timewindow_entries = dbcursor.fetchall()
+    while True:
 
-    zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
+        with close_when_done(dbconn.cursor()) as dbcursor:
+            dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
+            zero_timewindow_entries = dbcursor.fetchall()
 
-    logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
+        if len(zero_timewindow_entries) == 0:
+            break # no zero-timewindow entries.
 
-    fetch_entries_into_database(dbconn, zero_timewindow_entries)
+        zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
+
+        logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
+
+        fetch_entries_into_database(dbconn, zero_timewindow_entries)
 
 def vacuum_database(dbconn):
     """Perform a VACUUM command on the database."""
