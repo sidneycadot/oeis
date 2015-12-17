@@ -309,17 +309,19 @@ def compress_file(from_filename, to_filename):
 
     PRESET = 9 # level 9 without 'extra' works best on our data.
 
-    with start_timer() as timer, open(from_filename, "rb") as f:
-        logger.info("Reading uncompressed data from '{}' ...".format(from_filename))
-        data = f.read()
-        logger.info("Reading uncompressed data took {}.".format(timer.duration_string()))
+    BLOCKSIZE = 1048576 # Process data in blocks of 1 megabyte.
 
-    with start_timer() as timer, lzma.open(to_filename, "wb", format = lzma.FORMAT_XZ, check = lzma.CHECK_CRC64, preset = PRESET) as f:
-        logger.info("Writing compressed data to '{}' ...".format(to_filename))
-        f.write(data)
-        logger.info("Writing compressed data took {}.".format(timer.duration_string()))
+    with start_timer() as timer:
+        logger.info("Compressing data from '{}' to '{}' ...".format(from_filename, to_filename))
+        with open(from_filename, "rb") as fi, lzma.open(to_filename, "wb", format = lzma.FORMAT_XZ, check = lzma.CHECK_CRC64, preset = PRESET) as fo:
+            while True:
+                data = fi.read(BLOCKSIZE)
+                if len(data) == 0:
+                    break
+                fo.write(data)
+        logger.info("Compressing data took {}.".format(timer.duration_string()))
 
-def consolidate_database_daily(database_filename, remove_stale_files_flag):
+def consolidate_database_monthly(database_filename, remove_stale_files_flag):
     """Make a consolidated version of the database, once per day.
 
     The consolidated version will have a standardized filename 'oeis_vYYYYMMDD.sqlite3.xz'.
@@ -332,7 +334,12 @@ def consolidate_database_daily(database_filename, remove_stale_files_flag):
     i.e., all files that are called 'oeis_vYYYYMMDD.sqlite3.xz' except the one we just wrote.
     """
 
-    xz_filename = datetime.datetime.now().strftime("oeis_v%Y%m%d.sqlite3.xz")
+    now = datetime.datetime.now()
+
+    if now.day != 1:
+        return
+
+    xz_filename = now.strftime("oeis_v%Y%m%d.sqlite3.xz")
     if os.path.exists(xz_filename):
         return # file already exists.
 
@@ -370,7 +377,7 @@ def database_update_cycle(database_filename):
             update_database_entries_by_priority(dbconn, highest_oeis_id //  200) # Refresh 0.5 % of entries by priority.
             update_database_entries_for_nonzero_time_window(dbconn)              # Make sure we have t1 != t2 for all entries (full fetch on first run).
 
-        consolidate_database_daily(database_filename, remove_stale_files_flag = False)
+        consolidate_database_monthly(database_filename, remove_stale_files_flag = False)
 
         logger.info("Full database update cycle took {}.".format(timer.duration_string()))
 
