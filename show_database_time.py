@@ -66,11 +66,11 @@ def show_entries(database_filename):
     #bins = np.logspace(-10.0, +20.0, 200)
     #plt.hist(np.log10(priority), bins = bins, log = True)
 
-    RANGE_MAX = 0.5
+    RANGE_MAX = 0.15
 
     plt.hist(priority, range = (0, RANGE_MAX), bins = 200, log = True)
 
-    plt.xlabel("priority ({} values > {:.1f})".format(np.sum(priority > RANGE_MAX), RANGE_MAX))
+    plt.xlabel("priority ({} values > {:.3f})".format(np.sum(priority > RANGE_MAX), RANGE_MAX))
 
     plt.subplot(338)
     plt.hist(stability / 3600.0, bins = 200, log = True)

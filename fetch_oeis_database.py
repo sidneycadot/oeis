@@ -404,7 +404,7 @@ def main():
 
     database_filename = "oeis.sqlite3"
 
-    logfile = "fetch_oeis_database_%Y%m%d_%H%M%S.log"
+    logfile = "logfiles/fetch_oeis_database_%Y%m%d_%H%M%S.log"
 
     with setup_logging(logfile):
         database_update_cycle_loop(database_filename)
