@@ -20,7 +20,7 @@ class FetchResult:
 
 def fetch_url(url):
     with urllib.request.urlopen(url) as response:
-        return response.read().decode(response.headers.get_content_charset())
+        return response.read().decode(response.headers.get_content_charset() or 'utf-8')
 
 def main_content_ok(content):
 
