@@ -341,7 +341,7 @@ def parse_main_content(oeis_id, main_content):
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
+            logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, keywords))
 
     # Canonify keywords: remove empty keywords and duplicates. We do not sort, though.
 
