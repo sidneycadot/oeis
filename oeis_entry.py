@@ -122,46 +122,39 @@ def parse_value_directives(dv, directives):
     assert ",".join(str(value) for value in values) == lines
     return values
 
-def check_keywords(oeis_id, keywords):
+def log(func, desc, *args):
+    func(("[A{:06}] " + desc).format(oeis_id, *args))
+def log_problem(func, problem_code, problem_description, *args):
+    log(func, "(P{:02}) " + problem_description, problem_code, *args)
+def warning_problem(problem_code, problem_description, *args):
+    log_problem(logger.warning, problem_code, problem_description, *args)
+def error_problem(problem_code, problem_description, *args):
+    log_problem(logger.error, problem_code, problem_description, *args)
 
-    # Check forbidden combinations of keywords.
+FORBIDDEN_COMBINATIONS = [
+    ('tabl', 'tabf', 21),
+    ('nice', 'less', 22),
+    ('easy', 'hard', 23),
+    ('nonn', 'sign', 24),
+    ('full', 'more', 25)
+]
+EXCLUSIVE_KEYWORDS = [('allocated', 26), ('allocating', 27), ('dead', 28), ('recycled', 29)]
+def check_keywords(keywords):
+    for (a, b, problem_code) in FORBIDDEN_COMBINATIONS:
+        if a in keywords and b in keywords:
+            warning_problem(problem_code, "Keywords '{}' and '{}' occur together, which should not happen.", a, b)
 
-    if "tabl" in keywords and "tabf" in keywords:
-        logger.warning("A{:06} (P21) Keywords 'tabl' and 'tabf' occur together, which should not happen.".format(oeis_id))
-
-    if "nice" in keywords and "less" in keywords:
-        logger.warning("A{:06} (P22) Keywords 'nice' and 'less' occur together, which should not happen.".format(oeis_id))
-
-    if "easy" in keywords and "hard" in keywords:
-        logger.warning("A{:06} (P23) Keywords 'easy' and 'hard' occur together, which should not happen.".format(oeis_id))
-
-    if "nonn" in keywords and "sign" in keywords:
-        logger.warning("A{:06} (P24) Keywords 'nonn' and 'sign' occur together, which should not happen.".format(oeis_id))
-
-    if "full" in keywords and "more" in keywords:
-        logger.warning("A{:06} (P25) Keywords 'full' and 'more' occur together, which should not happen.".format(oeis_id))
-
-    # Check exclusive keywords.
-
-    if "allocated"  in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (P26) Keyword 'allocated' occurs in combination with other keywords, which should not happen.".format(oeis_id))
-
-    if "allocating" in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (P27) Keyword 'allocating' occurs in combination with other keywords, which should not happen.".format(oeis_id))
-
-    if "dead" in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (P28) Keyword 'dead' occurs in combination with other keywords, which should not happen.".format(oeis_id))
-
-    if "recycled" in keywords and len(keywords) > 1:
-        logger.warning("A{:06} (P29) Keyword 'recycled' occurs in combination with other keywords, which should not happen.".format(oeis_id))
+    if keywords and len(keywords) > 1:
+        for (k, problem_code) in EXCLUSIVE_KEYWORDS:
+            if k in keywords:
+                warning_problem(problem_code, "Keyword '{}' occurs in combination with other keywords, which should not happen.", k)
 
     # Check presence of either 'none' or 'sign' keyword.
 
-    if not(("allocated" in keywords) or ("allocating" in keywords) or ("dead" in keywords) or ("recycled" in keywords)):
-        if ("nonn" not in keywords) and ("sign" not in keywords):
-            logger.warning("A{:06} (P30) Keyword 'nonn' or 'sign' are both absent.".format(oeis_id))
+    if not any(k in keywords for (k,_) in EXCLUSIVE_KEYWORDS) and all(k not in keywords for k in ['nonn', 'sign']):
+        warning_problem(30, "Keyword 'nonn' or 'sign' are both absent.")
 
-def parse_bfile_content(oeis_id, bfile_content):
+def parse_bfile_content(bfile_content):
 
     lines = bfile_content.split("\n")
 
@@ -181,14 +174,14 @@ def parse_bfile_content(oeis_id, bfile_content):
         match = bfile_line_pattern.match(line)
 
         if match is None:
-            logger.error("[A{:06}] (P12) b-file line {} cannot be parsed: '{}'; terminating parse.".format(oeis_id, line_nr, line))
+            error_problem(12, "b-file line {} cannot be parsed: '{}'; terminating parse.", line_nr, line)
             break
 
         index = int(match.group(1))
         value = int(match.group(2))
 
         if len(indexes) > 0 and (index != indexes[-1] + 1):
-            logger.error("[A{:06}] (P08) b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.".format(oeis_id, line_nr, index, indexes[-1]))
+            error_problem(8, "b-file line {} has indexes that are non-sequential; {} follows {}; terminating parse.", line_nr, index, indexes[-1])
             break
 
         indexes.append(index)
@@ -201,7 +194,7 @@ def parse_bfile_content(oeis_id, bfile_content):
 
     return (first_index, values)
 
-def parse_main_content(oeis_id, main_content):
+def parse_main_content(main_content):
 
     # The order and count of expected directives, for any given entry, is as follows:
     #
@@ -237,9 +230,9 @@ def parse_main_content(oeis_id, main_content):
             if directive_value.startswith(" "):
                 directive_value = directive_value[1:]
                 if directive_value == "":
-                    logger.warning("[A{:06}] (P18) The %{} directive has a trailing space but no value.".format(oeis_id, directive))
+                    warning_problem(18, "The %{} directive has a trailing space but no value.", directive)
             else:
-                logger.warning("[A{:06}] (P16) The %{} directive should have a space before the start of its value.".format(oeis_id, directive))
+                warning_problem(16, "The %{} directive should have a space before the start of its value.", directive)
 
         new_lines.append((directive, directive_value))
 
@@ -257,9 +250,9 @@ def parse_main_content(oeis_id, main_content):
         check_main_content = header + "".join(check_main_content) + footer
 
         if main_content != check_main_content:
-            logger.warning("[A{:06}] (P17) Main content reconstruction failed.".format(oeis_id))
-            logger.info   ("[A{:06}]       original ............ : {!r}.".format(oeis_id, main_content))
-            logger.info   ("[A{:06}]       reconstruction ...... : {!r}.".format(oeis_id, check_main_content))
+            warning_problem(17, "Main content reconstruction failed.")
+            log(logger.info, "       original ............ : {!r}.", main_content)
+            log(logger.info, "       reconstruction ...... : {!r}.", check_main_content)
 
     # ========== check order of directives
 
@@ -281,7 +274,8 @@ def parse_main_content(oeis_id, main_content):
         if directive in acceptable_characters:
             unacceptable_characters = set(value) - acceptable_characters[directive]
             if unacceptable_characters:
-                logger.warning("[A{:06}] (P10) Unacceptable characters in value of %{} directive ({!r}): {}.".format(oeis_id, directive, value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])))
+                warning_problem(10, "Unacceptable characters in value of %{} directive ({!r}): {}.", directive, value,
+                                ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)]))
 
     # ========== parse all directives
 
@@ -315,16 +309,16 @@ def parse_main_content(oeis_id, main_content):
 
     for unexpected_keyword in sorted(unexpected_keywords):
         if unexpected_keyword == "":
-            logger.warning("[A{:06}] (P13) Unexpected empty keyword in %K directive value.".format(oeis_id))
+            warning_problem(13, "Unexpected empty keyword in %K directive value.")
         else:
-            logger.warning("[A{:06}] (P15) Unexpected keyword '{}' in %K directive value.".format(oeis_id, unexpected_keyword))
+            warning_problem(15, "Unexpected keyword '{}' in %K directive value.", unexpected_keyword)
 
     # Check for duplicate keywords.
 
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, keywords))
+            warning_problem(11, "Keyword '{}' occurs {} times in %K directive value: {!r}.", keyword, count, keywords)
 
     # Canonify keywords: remove empty keywords and duplicates. We do not sort, though.
 
@@ -339,14 +333,14 @@ def parse_main_content(oeis_id, main_content):
         identification = None
     else:
         if identification_pattern.match(identification) is None:
-            logger.warning("[A{:06}] (P14) Unusual %I directive value: '{}'.".format(oeis_id, identification))
+            warning_problem(14, "Unusual %I directive value: '{}'.", identification)
 
     # ========== process value directives (%S/%T/%U and %V/%W/%X)
 
     assert stu_values is not None
 
     if len(stu_values) == 0:
-        logger.warning("[A{:06}] (P03) No values listed (empty %S directive).".format(oeis_id))
+        warning_problem(3, "No values listed (empty %S directive).")
 
     # Merge STU values and VWX values (if the latter are present).
 
@@ -359,30 +353,30 @@ def parse_main_content(oeis_id, main_content):
         main_values = vwx_values
 
     if "dead" not in keywords and "sign" not in keywords and any(value < 0 for value in main_values):
-        logger.warning("[A{:06}] (P19) negative values are present, but 'sign' keyword is missing.".format(oeis_id))
+        warning_problem(19, "Negative values are present, but 'sign' keyword is missing.")
 
     if len(main_values) > 0:
         max_digits = max(digits(v) for v in main_values)
         if max_digits > 1000:
-            logger.warning("[A{:06}] (P20) Sequence contains extremely large values (up to {} digits).".format(oeis_id, max_digits))
+            warning_problem(20, "Sequence contains extremely large values (up to {} digits).", max_digits)
 
     # ========== process %A directive
 
     if author is None and not any(k in keywords for k in ['dead', 'recycled', 'allocated', 'allocating']):
-        logger.warning("[A{:06}] (P01) Missing %A directive.".format(oeis_id))
+        warning_problem(1, "Missing %A directive.")
 
     # ========== process %O directive
 
     if offset is None:
         if not any(k in keywords for k in ['dead', 'recycled', 'allocated', 'allocating']):
-            logger.warning("[A{:06}] (P02) Missing %O directive.".format(oeis_id))
+            warning_problem(2, "Missing %O directive.")
         offset_a = None
         offset_b = None
     else:
         offset_values = [int(o) for o in offset.split(",")]
         assert len(offset_values) in [1, 2]
         if len(offset_values) == 1:
-            logger.warning("[A{:06}] (P04) The %O directive value only has a single number ({}).".format(oeis_id, offset_values[0]))
+            warning_problem(4, "The %O directive value only has a single number ({}).", offset_values[0])
             offset_a = offset_values[0]
             offset_b = None
         else:
@@ -394,34 +388,35 @@ def parse_main_content(oeis_id, main_content):
     return (identification, main_values, name, comments, detailed_references, links, formulas, examples,
             maple_programs, mathematica_programs, other_programs, cross_references, canonized_keywords, offset_a, offset_b, author, extensions_and_errors)
 
-def parse_oeis_entry(oeis_id, main_content, bfile_content):
-
+def parse_oeis_entry(oeis_id_in, main_content, bfile_content):
+    global oeis_id
+    oeis_id = oeis_id_in
     (identification, main_values, name, comments, detailed_references, links, formulas, examples,
      maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) = \
-        parse_main_content (oeis_id, main_content)
+        parse_main_content (main_content)
 
-    (bfile_first_index, bfile_values) = parse_bfile_content(oeis_id, bfile_content)
+    (bfile_first_index, bfile_values) = parse_bfile_content(bfile_content)
 
     # Merge values obtained from S/T/U or V/W/X directives in main_content with the b-file values.
 
-    if not len(bfile_values) >= len(main_values):
-        logger.warning("[A{:06}] (P07) Main file has more values than b-file (main: {}, b-file: {}).".format(oeis_id, len(main_values), len(bfile_values)))
+    if len(main_values) > len(bfile_values):
+        warning_problem(7, "Main file has more values than b-file (main: {}, b-file: {}).", len(main_values), len(bfile_values))
 
     if all(bfile_values[i] == main_values[i] for i in range(min(len(main_values), len(bfile_values)))):
         # The values are fully consistent.
         # Use the one that has the most entries.
         values = bfile_values if len(bfile_values) > len(main_values) else main_values
     else:
-        logger.error("[A{:06}] (P05) Main/b-file values mismatch. Falling back on main values.".format(oeis_id))
-        logger.info ("[A{:06}]       main values ........ : {}...".format(oeis_id, main_values[:10]))
-        logger.info ("[A{:06}]       b-file values ...... : {}...".format(oeis_id, bfile_values[:10]))
+        error_problem(5, "Main/b-file values mismatch. Falling back on main values.")
+        log(logger.info, "       main values ........ : {}...", main_values[:10])
+        log(logger.info, "       b-file values ...... : {}...", bfile_values[:10])
 
         values = main_values  # Probably the safest choice.
 
     if offset_a is not None:
 
         if offset_a != bfile_first_index:
-            logger.error("[A{:06}] (P06) %O directive claims first index is {}, but b-file starts at index {}.".format(oeis_id, offset_a, bfile_first_index))
+            error_problem(6, "%O directive claims first index is {}, but b-file starts at index {}.", offset_a, bfile_first_index)
 
     if offset_b is not None:
 
@@ -432,15 +427,15 @@ def parse_oeis_entry(oeis_id, main_content, bfile_content):
             first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
 
             if offset_b != first_index_where_magnitude_exceeds_1:
-                logger.error("[A{:06}] (P09) %O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(oeis_id, offset_b, first_index_where_magnitude_exceeds_1))
+                error_problem(9, "%O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.", offset_b, first_index_where_magnitude_exceeds_1)
 
     # Return parsed values.
 
     return OeisEntry(oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
                      maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors)
 
-def load_entry(oeis_id, database_filename='oeis.sqlite3'):
+def load_entry(oeis_id_in, database_filename='oeis.sqlite3'):
     with close_when_done(sqlite3.connect(database_filename)) as dbconn, close_when_done(dbconn.cursor()) as dbcursor:
-        dbcursor.execute("SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id=?;", (oeis_id,))
+        dbcursor.execute("SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id=?;", (oeis_id_in,))
         rtn = dbcursor.fetchone()
-        return parse_oeis_entry(oeis_id, *rtn) if rtn else None
+        return parse_oeis_entry(oeis_id_in, *rtn) if rtn else None
