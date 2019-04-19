@@ -3,8 +3,10 @@
 import re
 import logging
 import collections
+import sqlite3
 
 from charmap import acceptable_characters
+from exit_scope    import close_when_done
 
 logger = logging.getLogger(__name__)
 
@@ -385,13 +387,14 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== process %A directive
 
-    if author is None:
+    if author is None and not any(k in keywords for k in ['dead', 'recycled', 'allocated', 'allocating']):
         logger.warning("[A{:06}] (P01) Missing %A directive.".format(oeis_id))
 
     # ========== process %O directive
 
     if offset is None:
-        logger.warning("[A{:06}] (P02) Missing %O directive.".format(oeis_id))
+        if not any(k in keywords for k in ['dead', 'recycled', 'allocated', 'allocating']):
+            logger.warning("[A{:06}] (P02) Missing %O directive.".format(oeis_id))
         offset_a = None
         offset_b = None
     else:
@@ -454,3 +457,9 @@ def parse_oeis_entry(oeis_id, main_content, bfile_content):
 
     return OeisEntry(oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
                      maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors)
+
+def load_entry(oeis_id, database_filename='oeis.sqlite3'):
+    with close_when_done(sqlite3.connect(database_filename)) as dbconn, close_when_done(dbconn.cursor()) as dbcursor:
+        dbcursor.execute("SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id=?;", (oeis_id,))
+        rtn = dbcursor.fetchone()
+        return parse_oeis_entry(oeis_id, *rtn) if rtn else None
