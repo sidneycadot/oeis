@@ -224,6 +224,7 @@ def parse_main_content(main_content):
 
     # remove space between Axxxxxx and value
 
+    check_format = True
     new_lines = []
     for (directive, directive_value) in lines:
         if directive_value != "":
@@ -231,15 +232,17 @@ def parse_main_content(main_content):
                 directive_value = directive_value[1:]
                 if directive_value == "":
                     warning_problem(18, "The %{} directive has a trailing space but no value.", directive)
+                    check_format = False
             else:
                 warning_problem(16, "The %{} directive should have a space before the start of its value.", directive)
+                check_format = False
 
         new_lines.append((directive, directive_value))
 
     lines = new_lines
     del new_lines
 
-    if True: # check format
+    if check_format:
 
         header = "# Greetings from The On-Line Encyclopedia of Integer Sequences! http://oeis.org/\n\nSearch: id:a{:06}\nShowing 1-1 of 1\n\n".format(oeis_id)
 
@@ -376,7 +379,8 @@ def parse_main_content(main_content):
         offset_values = [int(o) for o in offset.split(",")]
         assert len(offset_values) in [1, 2]
         if len(offset_values) == 1:
-            warning_problem(4, "The %O directive value only has a single number ({}).", offset_values[0])
+            if max(main_values) > 1 or min(main_values) < -1:
+                warning_problem(4, "The %O directive value only has a single number ({}).", offset_values[0])
             offset_a = offset_values[0]
             offset_b = None
         else:
