@@ -199,7 +199,7 @@ def fetch_entries_into_database(dbconn, entries):
                 # Execute fetches in parallel.
                 responses = list(executor.map(safe_fetch_remote_oeis_entry, batch))
 
-                logger.info("{} fetches took {} seconds ({:.3f} fetches/second).".format(batch_size, batch_timer.duration_string(), batch_size / batch_timer.duration()))
+                logger.info("{} fetches took {} ({:.3f} fetches/second).".format(batch_size, batch_timer.duration_string(), batch_size / batch_timer.duration()))
 
             # Process the responses by updating the database.
 

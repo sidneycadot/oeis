@@ -8,7 +8,7 @@ def duration_as_string(seconds):
     minutes = seconds / 60.0
     if minutes <= 120.0:
         return "{:.3f} minutes".format(minutes)
-    hours = math.floor(minutes / 3600.0)
+    hours = math.floor(minutes / 60.0)
     minutes_left = minutes - (60.0 * hours)
     return "{} hours and {:.3f} minutes".format(hours, minutes_left)
 
