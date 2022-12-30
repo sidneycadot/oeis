@@ -15,7 +15,8 @@ from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
-def create_database_schema(dbconn):
+
+def create_database_schema(conn):
     """Ensure that the 'oeis_entries' table is present in the database."""
 
     schema = """
@@ -46,7 +47,7 @@ def create_database_schema(dbconn):
 
     # Execute the schema creation statement.
 
-    dbconn.execute(schema)
+    conn.execute(schema)
 
 
 def process_oeis_entry(oeis_entry):

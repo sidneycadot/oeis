@@ -25,12 +25,13 @@ class A137419:
 
         return result
 
+
 def main():
 
     a137419 = A137419()
 
     MIN = 1
-    MAX = 132 # higher values are undefined.
+    MAX = 132  # higher values are undefined.
 
     with open("b137419.txt", "w") as f:
         for n in range(MIN, MAX + 1):

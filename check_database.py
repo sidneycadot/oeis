@@ -1,18 +1,20 @@
 #! /usr/bin/env python3
 
-
-# This page lists  constraints on the keywords:
+# This page lists constraints on the keywords:
 #
 #   http://oeis.org/wiki/User:Charles_R_Greathouse_IV/Keywords
 
 import pickle
 from collections import Counter
 
+
 def make_pairs(keywords):
     return [(k1, k2) for k1 in keywords for k2 in keywords]
 
+
 def digits(n):
     return len(str(abs(n)))
+
 
 def main():
 
@@ -55,9 +57,9 @@ def main():
             print("A{:06d} allocated + more".format(oeis_id))
         if "allocating" in keywords and len(keywords) > 1:
             print("A{:06d} allocating + more".format(oeis_id))
-        if "dead"       in keywords and len(keywords) > 1:
+        if "dead" in keywords and len(keywords) > 1:
             print("A{:06d} dead + more".format(oeis_id))
-        if "recycled"   in keywords and len(keywords) > 1:
+        if "recycled" in keywords and len(keywords) > 1:
             print("A{:06d} recycled + more".format(oeis_id))
 
         if not(("allocated" in keywords) or ("allocating" in keywords) or ("dead" in keywords) or ("recycled" in keywords)):
@@ -66,7 +68,6 @@ def main():
             if any(v < 0 for v in entry.values):
                 if "sign" not in keywords:
                     print("A{:06d} negative values are present, but 'sign' keyword is missing.".format(oeis_id))
-
 
     all_keywords = sorted(all_keywords)
 
@@ -82,6 +83,7 @@ def main():
             count = pair_counter[pair]
             print("{:>10}".format(count if count > 0 else ""), end = "")
         print()
+
 
 if __name__ == "__main__":
     main()

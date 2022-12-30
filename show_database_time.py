@@ -12,6 +12,7 @@ from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
+
 def show_entries(database_filename):
 
     if not os.path.exists(database_filename):
@@ -78,6 +79,7 @@ def show_entries(database_filename):
 
     plt.show()
 
+
 def main():
 
     if len(sys.argv) != 2:
@@ -88,6 +90,7 @@ def main():
 
     with setup_logging(None):
         show_entries(database_filename)
+
 
 if __name__ == "__main__":
     main()

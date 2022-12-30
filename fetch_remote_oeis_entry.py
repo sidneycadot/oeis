@@ -5,11 +5,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class BadOeisResponse(Exception):
     def __init__(self, message):
         self.message = message
+
     def __str__(self):
         return self.message
+
 
 class FetchResult:
     def __init__(self, oeis_id, timestamp, main_content, bfile_content):
@@ -18,9 +21,11 @@ class FetchResult:
         self.main_content  = main_content
         self.bfile_content = bfile_content
 
+
 def fetch_url(url):
     with urllib.request.urlopen(url) as response:
         return response.read().decode(response.headers.get_content_charset() or 'utf-8')
+
 
 def main_content_ok(content):
 
@@ -41,6 +46,7 @@ def main_content_ok(content):
     content_ok = lines[3].strip() == "Showing 1-1 of 1"
 
     return content_ok
+
 
 def fetch_remote_oeis_entry(oeis_id, fetch_bfile_flag):
 

@@ -4,6 +4,7 @@ import logging
 import pickle
 from catalog import read_catalog_files
 
+
 def verify_catalog(pickle_filename):
 
     catalog = read_catalog_files("catalog_files/*.json")
@@ -37,6 +38,7 @@ def verify_catalog(pickle_filename):
             if sequence.last_index is None:
                 print("                              INFINITE IN CATALOG")
 
+
 def main():
 
     pickle_filename = "oeis_v20150919.pickle"
@@ -49,6 +51,7 @@ def main():
         verify_catalog(pickle_filename)
     finally:
         logging.shutdown()
+
 
 if __name__ == "__main__":
     main()

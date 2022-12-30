@@ -32,7 +32,9 @@ class OeisEntry:
     def __str__(self):
         return "A{:06d}".format(self.oeis_id)
 
+
 expected_directive_order = re.compile("I(?:S|ST|STU)(?:|V|VW|VWX)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
+
 
 identification_pattern = re.compile("[MN][0-9]{4}( [MN][0-9]{4})*$")
 
@@ -67,7 +69,7 @@ expected_keywords = [
     "mult",       # multiplicative: a(mn)=a(m)a(n) if g.c.d.(m,n)=1
     "new",        # new (added within last two weeks, roughly)
     "nice",       # an exceptionally nice sequence
-    "nonn",       # a sequence of nonnegative numbers
+    "nonn",       # a sequence of non-negative numbers
     "obsc",       # obscure, better description needed
     "probation",  #
     "recycled",   #
@@ -84,8 +86,10 @@ expected_keywords_set = frozenset(expected_keywords)
 
 bfile_line_pattern = re.compile("(-?[0-9]+)[ \t]+(-?[0-9]+)")
 
+
 def digits(n):
     return len(str(abs(n)))
+
 
 def parse_optional_multiline_directive(dv, directive):
     if directive not in dv:
@@ -93,10 +97,12 @@ def parse_optional_multiline_directive(dv, directive):
     else:
         return "".join(line + "\n" for line in dv[directive])
 
+
 def parse_mandatory_singleline_directive(dv, directive):
     assert directive in dv
     assert len(dv[directive]) == 1
     return dv[directive][0]
+
 
 def parse_optional_singleline_directive(dv, directive):
     if directive not in dv:
@@ -104,6 +110,7 @@ def parse_optional_singleline_directive(dv, directive):
     else:
         assert len(dv[directive]) == 1
         return dv[directive][0]
+
 
 def parse_value_directives(dv, directives):
 
@@ -138,6 +145,7 @@ def parse_value_directives(dv, directives):
 
     assert ",".join(str(value) for value in values) == lines
     return values
+
 
 def check_keywords(oeis_id, keywords):
 
@@ -178,6 +186,7 @@ def check_keywords(oeis_id, keywords):
         if ("nonn" not in keywords) and ("sign" not in keywords):
             logger.warning("A{:06} (P30) Keyword 'nonn' or 'sign' are both absent.".format(oeis_id))
 
+
 def parse_bfile_content(oeis_id, bfile_content):
 
     lines = bfile_content.split("\n")
@@ -217,6 +226,7 @@ def parse_bfile_content(oeis_id, bfile_content):
     first_index = indexes[0] if len(indexes) > 0 else None
 
     return (first_index, values)
+
 
 def parse_main_content(oeis_id, main_content):
 
@@ -409,6 +419,7 @@ def parse_main_content(oeis_id, main_content):
 
     return (identification, main_values, name, comments, detailed_references, links, formulas, examples,
             maple_programs, mathematica_programs, other_programs, cross_references, canonized_keywords, offset_a, offset_b, author, extensions_and_errors)
+
 
 def parse_oeis_entry(oeis_id, main_content, bfile_content):
 

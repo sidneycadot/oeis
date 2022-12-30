@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 # =====================================================================
 
+
 def isprime(n):
     if n < 2:
         return False
@@ -19,26 +20,32 @@ def isprime(n):
         d += 1
     return True
 
+
 def gcd(a, b):
     while a:
         (a, b) = (b % a, a)
     return b
+
 
 def smallest_divisor(n):
     if n == 1: # special case
         return 1
     return min(d for d in range(2, n + 1) if n % d == 0)
 
+
 def count_divisors(n):
     return sum(1 for d in range(1, n + 1) if n % d == 0)
 
+
 def sum_divisors(n):
     return sum(d for d in range(1, n + 1) if n % d == 0)
+
 
 def euler_phi(n):
     return sum(1 for d in range(1, n + 1) if gcd(d, n) == 1)
 
 # =====================================================================
+
 
 class Sequence:
     def __init__(self, first_index, last_index):
@@ -81,6 +88,7 @@ class Sequence:
 
 # =====================================================================
 
+
 class PrimeSequence(Sequence):
     def __init__(self):
         Sequence.__init__(self, 1, None)
@@ -99,6 +107,7 @@ class PrimeSequence(Sequence):
 
         return self._memo[n - 1]
 
+
 class TwinPrimeSequence(Sequence):
     def __init__(self):
         Sequence.__init__(self, 1, None)
@@ -116,6 +125,7 @@ class TwinPrimeSequence(Sequence):
 
         return self._memo[n - 1]
 
+
 class PrimePiSequence(Sequence):
     def __init__(self):
         Sequence.__init__(self, 1, None)
@@ -131,6 +141,7 @@ class PrimePiSequence(Sequence):
 
         return self._memo[n - 1]
 
+
 class CountDivisorsSequence(Sequence):
     """ tau
     """
@@ -142,6 +153,7 @@ class CountDivisorsSequence(Sequence):
 
     def _value(self, n):
         return count_divisors(n)
+
 
 class SmallestDivisorSequence(Sequence):
     """ tau
@@ -155,6 +167,7 @@ class SmallestDivisorSequence(Sequence):
     def _value(self, n):
         return smallest_divisor(n)
 
+
 class SumDivisorsSequence(Sequence):
     """
     """
@@ -166,6 +179,7 @@ class SumDivisorsSequence(Sequence):
 
     def _value(self, n):
         return sum_divisors(n)
+
 
 class EulerPhiSequence(Sequence):
     """ EulerPhi
@@ -179,6 +193,7 @@ class EulerPhiSequence(Sequence):
     def _value(self, n):
         return euler_phi(n)
 
+
 class ExperimentalSequence(Sequence):
     def __init__(self):
         Sequence.__init__(self, 1, None)
@@ -188,6 +203,7 @@ class ExperimentalSequence(Sequence):
 
     def _value(self, n):
         return n % euler_phi(n)
+
 
 class PolynomialSequence(Sequence):
     def __init__(self, first_index, last_index, coefficients, divisor):
@@ -204,6 +220,7 @@ class PolynomialSequence(Sequence):
         assert value % self._divisor == 0
 
         return value // self._divisor
+
 
 class RecurrentSequence(Sequence):
     def __init__(self, first_index, last_index, initial_values, coefficients, k0):
@@ -231,6 +248,7 @@ class RecurrentSequence(Sequence):
         self._memo[n] = value
 
         return value
+
 
 class TreeCountSequence(Sequence):
     def __init__(self, fanout):
@@ -271,7 +289,6 @@ class TreeCountSequence(Sequence):
     def _value(self, index):
         return self._count_trees(1 + (self._fanout - 1) * (index - 1), 1)
 
-# =====================================================================
 
 def read_catalog_files(glob_pattern):
 

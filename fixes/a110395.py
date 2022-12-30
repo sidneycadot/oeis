@@ -1,10 +1,12 @@
 #! /usr/bin/env python3
 
-def digitcount(n, base):
-    return 0 if n == 0 else 1 + digitcount(n // base, base)
+def digit_count(n, base):
+    return 0 if n == 0 else 1 + digit_count(n // base, base)
+
 
 def complement(n, base):
-    return base ** digitcount(n, base) - n
+    return base ** digit_count(n, base) - n
+
 
 class A110395:
 
@@ -29,6 +31,7 @@ class A110395:
 
         return result
 
+
 def main():
 
     a110395 = A110395()
@@ -39,6 +42,7 @@ def main():
     with open("b110395.txt", "w") as f:
         for n in range(MIN, MAX + 1):
             print(n, a110395[n], file = f)
+
 
 if __name__ == "__main__":
     main()

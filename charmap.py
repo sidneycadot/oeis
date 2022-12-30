@@ -45,6 +45,7 @@ acceptable_characters = {
     'E' : ASCII | frozenset("´ÁÉßàáãäçèéíñóôöøüýčěłńőš’"),
 }
 
+
 def main():
     for key in sorted(acceptable_characters):
         assert occuring_characters[key].issuperset(acceptable_characters[key])
@@ -53,6 +54,7 @@ def main():
 
         if len(unwanted_characters) > 0:
             print("key {} has unwanted characters: {}".format(key, ", ".join("{!r}".format(c) for c in sorted(unwanted_characters))))
+
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,9 @@
 import time
 import math
 
-def duration_as_string(seconds):
+
+def duration_as_string(seconds: float) -> str:
+    """Return human-readable string representation of a duration in seconds."""
     if seconds <= 300.0:
         return "{:.3f} seconds".format(seconds)
     minutes = seconds / 60.0
@@ -12,10 +14,13 @@ def duration_as_string(seconds):
     minutes_left = minutes - (60.0 * hours)
     return "{} hours and {:.3f} minutes".format(hours, minutes_left)
 
+
 class TimerContextManager:
 
     def __init__(self, total_work):
         self.total_work = total_work
+        self.t_enter = None
+        self.t_stop = None
 
     def __enter__(self):
         self.t_enter = time.time()
@@ -40,7 +45,8 @@ class TimerContextManager:
         duration = self.duration()
         return duration_as_string(duration)
 
-    def etc(self, work_completed = None, work_remaining = None):
+    def etc(self, work_completed = None, work_remaining = None) -> float:
+        """Return estimated time to completion as a string."""
 
         t_current = time.time()
 
@@ -53,15 +59,16 @@ class TimerContextManager:
 
         tempo = work_completed / (t_current - self.t_enter)
 
-        etc = np.nan if tempo == 0.0 else work_remaining / tempo
+        etc = math.nan if tempo == 0.0 else work_remaining / tempo
 
         return etc
 
-    def etc_string(self, work_completed = None, work_remaining = None):
+    def etc_string(self, work_completed = None, work_remaining = None) -> str:
 
         etc = self.etc(work_completed, work_remaining)
 
         return duration_as_string(etc)
 
-def start_timer(total_work = None):
+
+def start_timer(total_work = None) -> TimerContextManager:
     return TimerContextManager(total_work)

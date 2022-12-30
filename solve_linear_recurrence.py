@@ -9,18 +9,16 @@ import json
 import numpy as np
 from fractions import Fraction, gcd
 from fraction_based_linear_algebra import inverse_matrix
-import itertools
-import functools
 from collections import OrderedDict
-from catalog import read_catalog_files
 from timer import start_timer
 import concurrent.futures
 
-from oeis_entry    import parse_oeis_entry
-from exit_scope    import close_when_done
+from oeis_entry import parse_oeis_entry
+from exit_scope import close_when_done
 from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
+
 
 class Term:
     def __init__(self, offset, alpha, beta):
@@ -31,11 +29,13 @@ class Term:
         self.offset = offset
         self.alpha  = alpha
         self.beta   = beta
+
     def __call__(self, a, i):
         if self.offset is None:
             return (i ** self.beta)
         else:
             return (a[i - self.offset] ** self.alpha) * (i ** self.beta)
+
     def __str__(self):
 
         if self.offset is None:
@@ -63,6 +63,7 @@ class Term:
 
     def __repr__(self):
         return "Term({}, {}, {})".format(self.offset, self.alpha, self.beta)
+
 
 def solution_to_string(solution, terms):
     (coefficients, divisor) = solution
@@ -100,6 +101,7 @@ def solution_to_string(solution, terms):
 
     return s
 
+
 def verify_linear_equation(lookup, terms, coefficients):
 
     equations_lhs = []
@@ -125,7 +127,8 @@ def verify_linear_equation(lookup, terms, coefficients):
 
     return np.all(fit == b)
 
-def solve_lineair_equation(oeis_id, lookup, terms):
+
+def solve_linear_equation(oeis_id, lookup, terms):
 
     equations_lhs = []
     equations_rhs = []
@@ -197,6 +200,7 @@ def solve_lineair_equation(oeis_id, lookup, terms):
 
     return solution
 
+
 def find_sequence_solution(work):
 
     (oeis_entry, terms) = work
@@ -215,9 +219,10 @@ def find_sequence_solution(work):
             first_index = oeis_entry.offset[0]
             # Turn the sequence data in a lookup dictionary.
             lookup = OrderedDict((i + first_index, v) for (i, v) in enumerate(oeis_entry.values))
-            solution = solve_lineair_equation(oeis_entry.oeis_id, lookup, terms)
+            solution = solve_linear_equation(oeis_entry.oeis_id, lookup, terms)
 
     return (oeis_entry, solution) # None or a 1-dimensional ndarray of coefficients
+
 
 def make_terms(max_beta_poly, offset_alpha_beta):
     terms = []
@@ -232,6 +237,7 @@ def make_terms(max_beta_poly, offset_alpha_beta):
                 terms.append(term)
     return terms
 
+
 def process_oeis_entry(work):
 
     (oeis_id, main_content, bfile_content, terms) = work
@@ -242,7 +248,7 @@ def process_oeis_entry(work):
         logger.warning("A{:06d} Skipping sequence without declared first index.".format(parsed_entry.oeis_id))
         solution = None
     else:
-        max_value =  max(abs(v) for v in parsed_entry.values)
+        max_value = max(abs(v) for v in parsed_entry.values)
         max_value_digit_count = len(str(max_value))
 
         if max_value_digit_count >= 10000:
@@ -252,9 +258,10 @@ def process_oeis_entry(work):
             first_index = parsed_entry.offset_a
             # Turn the sequence data in a lookup dictionary.
             lookup = OrderedDict((first_index + i, value) for (i, value) in enumerate(parsed_entry.values))
-            solution = solve_lineair_equation(parsed_entry.oeis_id, lookup, terms)
+            solution = solve_linear_equation(parsed_entry.oeis_id, lookup, terms)
 
     return (parsed_entry, solution)
+
 
 def poly_terms_generator():
     n = 0
@@ -300,22 +307,23 @@ def solve_linear_recurrences(database_filename_in, terms, exclude_entries = None
 
         logger.info("Processed all database entries in {}.".format(timer.duration_string()))
 
+
 def solve_polynomials(database_filename_in):
 
     exclude_entries = set()
 
-    maxdegree = 0
+    max_degree = 0
     while True:
 
         # Can we read the solutions from a file?
-        solutions_filename = "polynomial_solutions_{}.txt".format(maxdegree)
+        solutions_filename = "polynomial_solutions_{}.txt".format(max_degree)
 
         if os.path.exists(solutions_filename):
             with open(solutions_filename, "r") as f:
                 solutions = json.load(f)
             logger.info("Read {} entries from '{}'.".format(len(solutions), solutions_filename))
         else:
-            terms = [Term(None, None, degree) for degree in range(maxdegree + 1)]
+            terms = [Term(None, None, degree) for degree in range(max_degree + 1)]
             solutions = list(solve_linear_recurrences(database_filename_in, terms, exclude_entries))
             with open(solutions_filename, "w") as f:
                 json.dump(solutions, f)
@@ -323,7 +331,8 @@ def solve_polynomials(database_filename_in):
 
         exclude_entries |= set(oeis_string_id for (oeis_string_id, solution) in solutions)
 
-        maxdegree += 1
+        max_degree += 1
+
 
 def main():
 
@@ -338,6 +347,7 @@ def main():
     with setup_logging(logfile):
         logging.getLogger("oeis_entry").setLevel(logging.CRITICAL)
         solve_polynomials(database_filename_in)
+
 
 if __name__ == "__main__":
     main()

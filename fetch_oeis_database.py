@@ -21,13 +21,14 @@ import lzma
 import concurrent.futures
 
 from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
-from timer                   import start_timer
-from exit_scope              import close_when_done
-from setup_logging           import setup_logging
+from timer import start_timer
+from exit_scope  import close_when_done
+from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
-def ensure_database_schema_created(dbconn):
+
+def ensure_database_schema_created(conn):
     """Ensure that the 'oeis_entries' table is present in the database.
 
     Note that the database schema has the "IF NOT EXISTS" clause.
@@ -50,7 +51,8 @@ def ensure_database_schema_created(dbconn):
 
     # Execute the schema creation statement.
 
-    dbconn.execute(schema)
+    conn.execute(schema)
+
 
 def find_highest_oeis_id():
     """Find the highest entry ID in the remote OEIS database by performing HTTP queries and doing a binary search."""
@@ -87,6 +89,7 @@ def find_highest_oeis_id():
 
     return success_id
 
+
 def safe_fetch_remote_oeis_entry(entry):
     """Fetch a single OEIS entry from the remote OEIS database, and swallow any exceptions.
 
@@ -105,28 +108,29 @@ def safe_fetch_remote_oeis_entry(entry):
         result = None
     return result
 
-def process_responses(dbconn, responses):
+
+def process_responses(conn, responses):
     """Process a batch of responses by updating the local SQLite database.
 
     A logging message is produced that summarizes how the batch of responses was processed.
-    This function returns a set of OEIS IDs that have been succesfully processed.
+    This function returns a set of OEIS IDs that have been successfully processed.
     """
 
-    countFailures         = 0
-    countNewEntries       = 0
-    countIdenticalEntries = 0
-    countUpdatedEntries   = 0
+    count_failures          = 0
+    count_new_entries       = 0
+    count_identical_entries = 0
+    count_updated_entries   = 0
 
     processed_entries = set()
 
-    with close_when_done(dbconn.cursor()) as dbcursor:
+    with close_when_done(conn.cursor()) as dbcursor:
 
         for response in responses:
 
             if response is None:
                 # Skip entries that are not okay.
                 # Do not record the failures in the processed_entries set.
-                countFailures += 1
+                count_failures += 1
                 continue
 
             query = "SELECT main_content, bfile_content FROM oeis_entries WHERE oeis_id = ?;"
@@ -142,29 +146,30 @@ def process_responses(dbconn, responses):
                 # We will insert it as a new entry.
                 query = "INSERT INTO oeis_entries(oeis_id, t1, t2, main_content, bfile_content) VALUES (?, ?, ?, ?, ?);"
                 dbcursor.execute(query, (response.oeis_id, response.timestamp, response.timestamp, response.main_content, response.bfile_content))
-                countNewEntries += 1
+                count_new_entries += 1
             elif previous_content != (response.main_content, response.bfile_content):
                 # The database content is stale.
                 # Update t1, t2, and content.
                 query = "UPDATE oeis_entries SET t1 = ?, t2 = ?, main_content = ?, bfile_content = ? WHERE oeis_id = ?;"
                 dbcursor.execute(query, (response.timestamp, response.timestamp, response.main_content, response.bfile_content, response.oeis_id))
-                countUpdatedEntries += 1
+                count_updated_entries += 1
             else:
                 # The database content is identical to the freshly fetched content.
                 # We will just update the t2 field, indicating the fresh fetch.
                 query = "UPDATE oeis_entries SET t2 = ? WHERE oeis_id = ?;"
                 dbcursor.execute(query, (response.timestamp, response.oeis_id))
-                countIdenticalEntries += 1
+                count_identical_entries += 1
 
             processed_entries.add(response.oeis_id)
 
-    dbconn.commit()
+    conn.commit()
 
-    logger.info("Processed {} responses (failures: {}, new: {}, identical: {}, updated: {}).".format(len(responses), countFailures, countNewEntries, countIdenticalEntries, countUpdatedEntries))
+    logger.info("Processed {} responses (failures: {}, new: {}, identical: {}, updated: {}).".format(len(responses), count_failures, count_new_entries, count_identical_entries, count_updated_entries))
 
     return processed_entries
 
-def fetch_entries_into_database(dbconn, entries):
+
+def fetch_entries_into_database(conn, entries):
     """Fetch a set of entries from the remote OEIS database and store the results in the database.
 
     The 'entries' parameter contains a number of OEIS IDs.
@@ -172,17 +177,17 @@ def fetch_entries_into_database(dbconn, entries):
 
     Entries are processed in randomized batches.
     We use a pool of worker threads to perform the actual fetches.
-    This enhances fetch performance (in terms of fetche-per-second) dramatically.
+    This enhances fetch performance (in terms of fetches-per-second) dramatically.
     Typical fetch performance is about 20 fetches per second.
 
-    The responses of each batch of entries are processed by the 'process_responses' function defined above.
+    The responses of each batch are processed by the 'process_responses' function defined above.
     """
 
-    FETCH_BATCH_SIZE  =  500 # 100 -- 1000 are reasonable
-    NUM_WORKERS       =   20 # 10 -- 20 are reasonable
-    SLEEP_AFTER_BATCH =  2.0 # [seconds]
+    FETCH_BATCH_SIZE  = 500  # 100 -- 1000 are reasonable
+    NUM_WORKERS       = 20   # 10 -- 20 are reasonable
+    SLEEP_AFTER_BATCH = 2.0  # [seconds]
 
-    entries = set(entries) # make a copy, and ensure it is a set.
+    entries = set(entries)  # make a copy, and ensure it is a set.
 
     with start_timer(len(entries)) as timer, concurrent.futures.ThreadPoolExecutor(NUM_WORKERS) as executor:
 
@@ -203,7 +208,7 @@ def fetch_entries_into_database(dbconn, entries):
 
             # Process the responses by updating the database.
 
-            processed_entries = process_responses(dbconn, responses)
+            processed_entries = process_responses(conn, responses)
 
             entries -= processed_entries
 
@@ -218,10 +223,11 @@ def fetch_entries_into_database(dbconn, entries):
 
         logger.info("Fetched {} entries in {}.".format(timer.total_work, timer.duration_string()))
 
-def make_database_complete(dbconn, highest_oeis_id):
+
+def make_database_complete(conn, highest_oeis_id):
     """Fetch all entries from the remote OEIS database that are not yet present in the local SQLite database."""
 
-    with close_when_done(dbconn.cursor()) as dbcursor:
+    with close_when_done(conn.cursor()) as dbcursor:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
         present_entries = dbcursor.fetchall()
 
@@ -233,26 +239,28 @@ def make_database_complete(dbconn, highest_oeis_id):
     missing_entries = set(all_entries) - set(present_entries)
     logger.info("Missing entries to be fetched: {}.".format(len(missing_entries)))
 
-    fetch_entries_into_database(dbconn, missing_entries)
+    fetch_entries_into_database(conn, missing_entries)
 
-def update_database_entries_randomly(dbconn, howmany):
+
+def update_database_entries_randomly(conn, max_count):
     """Re-fetch (update) a random subset of entries that are already present in the local SQLite database."""
 
-    with close_when_done(dbconn.cursor()) as dbcursor:
+    with close_when_done(conn.cursor()) as dbcursor:
         dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
         present_entries = dbcursor.fetchall()
 
     present_entries = [oeis_id for (oeis_id, ) in present_entries]
 
-    random_entries_count = min(howmany, len(present_entries))
+    random_entries_count = min(max_count, len(present_entries))
 
     random_entries = random.sample(present_entries, random_entries_count)
 
     logger.info("Random entries in local database selected for refresh: {}.".format(len(random_entries)))
 
-    fetch_entries_into_database(dbconn, random_entries)
+    fetch_entries_into_database(conn, random_entries)
 
-def update_database_entries_by_priority(dbconn, howmany):
+
+def update_database_entries_by_priority(conn, max_count):
     """Re-fetch entries that are old, relative to their stability.
 
     For each entry, a priority is determined, as follows:
@@ -267,49 +275,52 @@ def update_database_entries_by_priority(dbconn, howmany):
 
     t_current = time.time()
 
-    with close_when_done(dbconn.cursor()) as dbcursor:
+    with close_when_done(conn.cursor()) as dbcursor:
         query = "SELECT oeis_id FROM oeis_entries ORDER BY (? - t2) / max(t2 - t1, 1e-6) DESC LIMIT ?;"
-        dbcursor.execute(query, (t_current, howmany))
+        dbcursor.execute(query, (t_current, max_count))
         highest_priority_entries = dbcursor.fetchall()
 
     highest_priority_entries = [oeis_id for (oeis_id, ) in highest_priority_entries]
 
     logger.info("Highest-priority entries in local database selected for refresh: {}.".format(len(highest_priority_entries)))
 
-    fetch_entries_into_database(dbconn, highest_priority_entries)
+    fetch_entries_into_database(conn, highest_priority_entries)
 
-def update_database_entries_for_nonzero_time_window(dbconn):
+
+def update_database_entries_for_nonzero_time_window(conn):
     """ Re-fetch entries in the database that have a 0-second time window. These are entries that have been fetched only once."""
 
     while True:
 
-        with close_when_done(dbconn.cursor()) as dbcursor:
+        with close_when_done(conn.cursor()) as dbcursor:
             dbcursor.execute("SELECT oeis_id FROM oeis_entries WHERE t1 = t2;")
-            zero_timewindow_entries = dbcursor.fetchall()
+            zero_time_window_entries = dbcursor.fetchall()
 
-        if len(zero_timewindow_entries) == 0:
-            break # no zero-timewindow entries.
+        if len(zero_time_window_entries) == 0:
+            break  # no zero-time_window entries.
 
-        zero_timewindow_entries = [oeis_id for (oeis_id, ) in zero_timewindow_entries]
+        zero_time_window_entries = [oeis_id for (oeis_id, ) in zero_time_window_entries]
 
-        logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_timewindow_entries)))
+        logger.info("Entries with zero time window in local database selected for refresh: {}.".format(len(zero_time_window_entries)))
 
-        fetch_entries_into_database(dbconn, zero_timewindow_entries)
+        fetch_entries_into_database(conn, zero_time_window_entries)
 
-def vacuum_database(dbconn):
+
+def vacuum_database(conn):
     """Perform a VACUUM command on the database."""
 
     with start_timer() as timer:
         logger.info("Initiating VACUUM on database ...")
-        dbconn.execute("VACUUM;")
+        conn.execute("VACUUM;")
         logger.info("VACUUM done in {}.".format(timer.duration_string()))
+
 
 def compress_file(from_filename, to_filename):
     """Compress a file using the 'xz' compression algorithm."""
 
-    PRESET = 9 # level 9 without 'extra' works best on our data.
+    PRESET = 9  # level 9 without 'extra' works best on our data.
 
-    BLOCKSIZE = 1048576 # Process data in blocks of 1 megabyte.
+    BLOCKSIZE = 1048576  # Process data in blocks of 1 megabyte.
 
     with start_timer() as timer:
         logger.info("Compressing data from '{}' to '{}' ...".format(from_filename, to_filename))
@@ -321,8 +332,9 @@ def compress_file(from_filename, to_filename):
                 fo.write(data)
         logger.info("Compressing data took {}.".format(timer.duration_string()))
 
+
 def consolidate_database_monthly(database_filename, remove_stale_files_flag):
-    """Make a consolidated version of the database, once per day.
+    """Make a consolidated version of the database once every month.
 
     The consolidated version will have a standardized filename 'oeis_vYYYYMMDD.sqlite3.xz'.
 
@@ -348,8 +360,8 @@ def consolidate_database_monthly(database_filename, remove_stale_files_flag):
         logger.info("Consolidating database to '{}' ...".format(xz_filename))
 
         # Vacuum the database
-        with close_when_done(sqlite3.connect(database_filename)) as dbconn:
-            vacuum_database(dbconn)
+        with close_when_done(sqlite3.connect(database_filename)) as conn:
+            vacuum_database(conn)
 
         # Create the xz file.
         compress_file(database_filename, xz_filename)
@@ -363,6 +375,7 @@ def consolidate_database_monthly(database_filename, remove_stale_files_flag):
 
         logger.info("Consolidating data took {}.".format(timer.duration_string()))
 
+
 def database_update_cycle(database_filename):
     """Perform a single cycle of the database update loop."""
 
@@ -374,12 +387,13 @@ def database_update_cycle(database_filename):
             ensure_database_schema_created(dbconn)
             make_database_complete(dbconn, highest_oeis_id)                      # Make sure we have all entries (full fetch on first run).
             update_database_entries_randomly(dbconn, highest_oeis_id // 1000)    # Refresh 0.1 % of entries randomly.
-            update_database_entries_by_priority(dbconn, highest_oeis_id //  200) # Refresh 0.5 % of entries by priority.
+            update_database_entries_by_priority(dbconn, highest_oeis_id // 200)  # Refresh 0.5 % of entries by priority.
             update_database_entries_for_nonzero_time_window(dbconn)              # Make sure we have t1 != t2 for all entries (full fetch on first run).
 
         consolidate_database_monthly(database_filename, remove_stale_files_flag = False)
 
         logger.info("Full database update cycle took {}.".format(timer.duration_string()))
+
 
 def database_update_cycle_loop(database_filename):
     """Call the database update cycle in an infinite loop, with random pauses in between."""
@@ -399,6 +413,7 @@ def database_update_cycle_loop(database_filename):
         logger.info("Sleeping for {:.1f} seconds ...".format(pause))
         time.sleep(pause)
 
+
 def main():
     """Initialize logger and run the database update cycle loop."""
 
@@ -408,6 +423,7 @@ def main():
 
     with setup_logging(logfile):
         database_update_cycle_loop(database_filename)
+
 
 if __name__ == "__main__":
     main()

@@ -4,11 +4,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class MyFormatter(logging.Formatter):
     """A formatter that is identical to the default Formatter, except that it replaces the comma by a period in the time."""
     def formatTime(self, record, datefmt = None):
         s = logging.Formatter.formatTime(self, record, datefmt)
         return s.replace(",", ".")
+
 
 class LoggingContextManager:
 
@@ -88,8 +90,10 @@ class LoggingContextManager:
 
         logging.shutdown()
 
+
 def setup_logging(*args, **kwargs):
     return LoggingContextManager(*args, **kwargs)
+
 
 def test_logging():
 
@@ -100,10 +104,12 @@ def test_logging():
     logger.error("This is an error message.")
     logger.critical("This is a critical message.")
 
+
 def main():
 
     with setup_logging("test_%Y%m%d_%H%M%S.log", noisy = True):
         test_logging()
+
 
 if __name__ == "__main__":
     main()

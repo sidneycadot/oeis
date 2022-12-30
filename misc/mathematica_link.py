@@ -7,6 +7,7 @@ import time
 import numpy as np
 from matplotlib import pyplot as plt
 
+
 class MathematicaProcess:
 
     def __init__(self):
@@ -58,6 +59,7 @@ class MathematicaProcess:
 
         return response
 
+
 def main():
     data = []
     with MathematicaProcess() as mathematica:
@@ -76,7 +78,7 @@ def main():
     plt.plot(d, duration, "*")
     plt.show()
 
+
 if __name__ == "__main__":
     main()
-
-print("done.")
+    print("done.")

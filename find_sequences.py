@@ -47,4 +47,5 @@ for candidate_index in sorted(candidate_map[search1] & candidate_map[search2] & 
     oeis_entry = oeis_entries[candidate_index]
     print(oeis_entry, oeis_entry.name)
     print(oeis_entry.values)
-    print
+    print()
+

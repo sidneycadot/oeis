@@ -3,10 +3,12 @@
 import numpy as np
 from fractions import Fraction
 
+
 def identity_matrix(n):
     """Construct an identity matrix I."""
 
     return np.array([[Fraction(i == j) for i in range(n)] for j in range(n)])
+
 
 def inverse_matrix(X):
     """Calculate the inverse of matrix X that consists of Fractions.
@@ -36,14 +38,14 @@ def inverse_matrix(X):
 
     I = identity_matrix(n)
 
-    XI= np.hstack((X, I)) # Join X and I matrices.
+    XI = np.hstack((X, I)) # Join X and I matrices.
 
     del X, I # Remove then from the scope to prevent accidental usage.
 
     # Downward elimination: perform row operations that make the lower triangle
     # of X equal to 0 and the main diagonal 1.
     #
-    # In this first elimintation stage, we may encounter pivots that cannot be
+    # In this first elimination stage, we may encounter pivots that cannot be
     # made zero by row exchanges. If that happens, the matrix is singular
     # (non-invertible). This is indicated by a ValueError exception.
 
@@ -77,6 +79,7 @@ def inverse_matrix(X):
 
     return XI[:, -n:]
 
+
 def stresstest(SIZE, REPEATS):
     """Perform a randomized stress test on SIZE x SIZE matrices."""
 
@@ -107,6 +110,7 @@ def stresstest(SIZE, REPEATS):
     print("    {} inversions failed due to a singular matrix.".format(singular_count))
     print()
 
+
 def main():
     """Perform stress tests on small and medium-sized matrices."""
 
@@ -118,6 +122,7 @@ def main():
     stresstest(10, 50)
     stresstest(15, 50)
     stresstest(20, 50)
+
 
 if __name__ == "__main__":
     main()

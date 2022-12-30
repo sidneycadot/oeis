@@ -13,6 +13,7 @@ from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
+
 def process_database_entries(database_filename_in, dirname_out):
 
     if not os.path.exists(database_filename_in):
@@ -59,6 +60,7 @@ def process_database_entries(database_filename_in, dirname_out):
 
         logger.info("Processed all database entries in {}.".format(timer.duration_string()))
 
+
 def main():
 
     if len(sys.argv) != 2:
@@ -73,6 +75,7 @@ def main():
 
     with setup_logging(None):
         process_database_entries(database_filename_in, dirname_out)
+
 
 if __name__ == "__main__":
     main()

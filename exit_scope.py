@@ -11,8 +11,10 @@ class ExitScopeContextManager:
     def __exit__(self, exc_type, exc_value, traceback):
         self.operation(self.instance)
 
+
 def close_when_done(instance):
     return ExitScopeContextManager(instance, lambda x : x.close())
+
 
 def shutdown_when_done(instance):
     return ExitScopeContextManager(instance, lambda x : x.shutdown())
