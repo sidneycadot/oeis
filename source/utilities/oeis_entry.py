@@ -3,33 +3,34 @@
 import re
 import logging
 import collections
+from typing import NamedTuple, List
 
-from source.to_be_sorted.charmap import acceptable_characters
+from .charmap import acceptable_characters
+
 
 logger = logging.getLogger(__name__)
 
 
-class OeisEntry:
-    def __init__(self, oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
-                 maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors):
-        self.oeis_id               = oeis_id
-        self.identification        = identification
-        self.values                = values
-        self.name                  = name
-        self.comments              = comments
-        self.detailed_references   = detailed_references
-        self.links                 = links
-        self.formulas              = formulas
-        self.examples              = examples
-        self.maple_programs        = maple_programs
-        self.mathematica_programs  = mathematica_programs
-        self.other_programs        = other_programs
-        self.cross_references      = cross_references
-        self.keywords              = keywords
-        self.offset_a              = offset_a
-        self.offset_b              = offset_b
-        self.author                = author
-        self.extensions_and_errors = extensions_and_errors
+class OeisEntry(NamedTuple):
+    """A class containing all information in an OEIS entry, split out by field."""
+    oeis_id: int
+    identification: str
+    values: List[int]
+    name: str
+    comments: str
+    detailed_references: str
+    links: str
+    formulas: str
+    examples: str
+    maple_programs: str
+    mathematica_programs: str
+    other_programs: str
+    cross_references: str
+    keywords: List[str]
+    offset_a: int
+    offset_b: int
+    author: str
+    extensions_and_errors: str
 
     def __str__(self):
         return "A{:06d}".format(self.oeis_id)
@@ -100,13 +101,13 @@ def parse_optional_multiline_directive(dv, directive):
         return "".join(line + "\n" for line in dv[directive])
 
 
-def parse_mandatory_singleline_directive(dv, directive):
+def parse_mandatory_single_line_directive(dv, directive):
     assert directive in dv
     assert len(dv[directive]) == 1
     return dv[directive][0]
 
 
-def parse_optional_singleline_directive(dv, directive):
+def parse_optional_single_line_directive(dv, directive):
     if directive not in dv:
         return None
     else:
@@ -149,9 +150,8 @@ def parse_value_directives(dv, directives):
     return values
 
 
-def check_keywords(oeis_id, keywords):
-
-    # Check forbidden combinations of keywords.
+def check_keywords(oeis_id: int, keywords) -> None:
+    """Check forbidden combinations of keywords."""
 
     if "tabl" in keywords and "tabf" in keywords:
         logger.warning("A{:06} (P21) Keywords 'tabl' and 'tabf' occur together, which should not happen.".format(oeis_id))
@@ -314,10 +314,10 @@ def parse_main_content(oeis_id, main_content):
 
     # ========== parse all directives
 
-    identification        = parse_mandatory_singleline_directive (dv, 'I')
+    identification        = parse_mandatory_single_line_directive (dv, 'I')
     stu_values            = parse_value_directives               (dv, "STU")
     vwx_values            = parse_value_directives               (dv, "VWX")
-    name                  = parse_mandatory_singleline_directive (dv, 'N')
+    name                  = parse_mandatory_single_line_directive (dv, 'N')
     comments              = parse_optional_multiline_directive   (dv, 'C')
     detailed_references   = parse_optional_multiline_directive   (dv, 'D')
     links                 = parse_optional_multiline_directive   (dv, 'H')
@@ -327,9 +327,9 @@ def parse_main_content(oeis_id, main_content):
     mathematica_programs  = parse_optional_multiline_directive   (dv, 't')
     other_programs        = parse_optional_multiline_directive   (dv, 'o')
     cross_references      = parse_optional_multiline_directive   (dv, 'Y')
-    keywords              = parse_mandatory_singleline_directive (dv, 'K')
-    offset                = parse_optional_singleline_directive  (dv, 'O')
-    author                = parse_optional_singleline_directive  (dv, 'A')
+    keywords              = parse_mandatory_single_line_directive (dv, 'K')
+    offset                = parse_optional_single_line_directive  (dv, 'O')
+    author                = parse_optional_single_line_directive  (dv, 'A')
     extensions_and_errors = parse_optional_multiline_directive   (dv, 'E')
 
     # ========== process %K directive
@@ -353,7 +353,7 @@ def parse_main_content(oeis_id, main_content):
     keyword_counter = collections.Counter(keywords)
     for (keyword, count) in keyword_counter.items():
         if count > 1:
-            logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value: {!r}.".format(oeis_id, keyword, count, line_K))
+            logger.warning("[A{:06}] (P11) Keyword '{}' occurs {} times in %K directive value.".format(oeis_id, keyword, count))
 
     # Canonify keywords: remove empty keywords and duplicates. We do not sort, though.
 
@@ -423,11 +423,12 @@ def parse_main_content(oeis_id, main_content):
             maple_programs, mathematica_programs, other_programs, cross_references, canonized_keywords, offset_a, offset_b, author, extensions_and_errors)
 
 
-def parse_oeis_entry(oeis_id, main_content, bfile_content):
+def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str) -> OeisEntry:
 
     (identification, main_values, name, comments, detailed_references, links, formulas, examples,
-     maple_programs, mathematica_programs, other_programs, cross_references, keywords, offset_a, offset_b, author, extensions_and_errors) = \
-        parse_main_content (oeis_id, main_content)
+     maple_programs, mathematica_programs, other_programs, cross_references, keywords,
+     offset_a, offset_b, author, extensions_and_errors) = \
+        parse_main_content(oeis_id, main_content)
 
     (bfile_first_index, bfile_values) = parse_bfile_content(oeis_id, bfile_content)
 
