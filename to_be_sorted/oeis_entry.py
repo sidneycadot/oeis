@@ -4,9 +4,10 @@ import re
 import logging
 import collections
 
-from charmap import acceptable_characters
+from to_be_sorted.charmap import acceptable_characters
 
 logger = logging.getLogger(__name__)
+
 
 class OeisEntry:
     def __init__(self, oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
@@ -29,6 +30,7 @@ class OeisEntry:
         self.offset_b              = offset_b
         self.author                = author
         self.extensions_and_errors = extensions_and_errors
+
     def __str__(self):
         return "A{:06d}".format(self.oeis_id)
 
@@ -168,7 +170,7 @@ def check_keywords(oeis_id, keywords):
 
     # Check exclusive keywords.
 
-    if "allocated"  in keywords and len(keywords) > 1:
+    if "allocated" in keywords and len(keywords) > 1:
         logger.warning("A{:06} (P26) Keyword 'allocated' occurs in combination with other keywords, which should not happen.".format(oeis_id))
 
     if "allocating" in keywords and len(keywords) > 1:

@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-# Code to process raw OEIS entries, by parsing them.
+"""Code to process raw OEIS entries, by parsing them."""
 
 import os
 import sys
@@ -8,9 +8,9 @@ import logging
 import sqlite3
 import concurrent.futures
 
-from oeis_entry    import parse_oeis_entry
-from timer         import start_timer
-from exit_scope    import close_when_done
+from oeis_entry import parse_oeis_entry
+from timer import start_timer
+from exit_scope import close_when_done
 from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)

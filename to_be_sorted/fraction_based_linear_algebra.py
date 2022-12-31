@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
 
-import numpy as np
 from fractions import Fraction
+
+import numpy as np
 
 
 def identity_matrix(n):
@@ -38,9 +39,9 @@ def inverse_matrix(X):
 
     I = identity_matrix(n)
 
-    XI = np.hstack((X, I)) # Join X and I matrices.
+    XI = np.hstack((X, I))  # Join the X and I matrices.
 
-    del X, I # Remove then from the scope to prevent accidental usage.
+    del X, I  # Remove them from the scope to prevent accidental usage.
 
     # Downward elimination: perform row operations that make the lower triangle
     # of X equal to 0 and the main diagonal 1.
@@ -75,7 +76,7 @@ def inverse_matrix(X):
     # Upward elimination: zero the upper triangle using row operations.
     for j in range(n - 2, -1, -1):
         for i in range(j + 1, n):
-            XI[j, :] -=  XI[j, i] * XI[i, :]
+            XI[j, :] -= XI[j, i] * XI[i, :]
 
     return XI[:, -n:]
 

@@ -41,7 +41,7 @@ def main():
         max_digits = max(digits(v) for v in entry.values)
         if max_digits > 1000:
             print("A{:06d} max digits too large: {}".format(oeis_id, max_digits))
-        
+
         if "tabl" in keywords and "tabf" in keywords:
             print("A{:06d} tabl/tabf together".format(oeis_id))
         if "nice" in keywords and "less" in keywords:

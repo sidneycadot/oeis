@@ -1,7 +1,9 @@
+"""Functionality to fetch a remote OEIS entry, optionally including its b-file."""
 
 import urllib.request
 import time
 import logging
+from typing import NamedTuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -14,20 +16,20 @@ class BadOeisResponse(Exception):
         return self.message
 
 
-class FetchResult:
-    def __init__(self, oeis_id, timestamp, main_content, bfile_content):
-        self.oeis_id       = oeis_id
-        self.timestamp     = timestamp
-        self.main_content  = main_content
-        self.bfile_content = bfile_content
+class FetchResult(NamedTuple):
+    oeis_id: int
+    timestamp: float
+    main_content: str
+    bfile_content: Optional[str]
 
 
-def fetch_url(url):
+def fetch_url(url: str) -> str:
+    """Fetch URL as string."""
     with urllib.request.urlopen(url) as response:
         return response.read().decode(response.headers.get_content_charset() or 'utf-8')
 
 
-def main_content_ok(content):
+def main_content_ok(content: str) -> bool:
 
     # A proper response has 5 header lines, content, and 2 footer lines:
     #
@@ -48,9 +50,9 @@ def main_content_ok(content):
     return content_ok
 
 
-def fetch_remote_oeis_entry(oeis_id, fetch_bfile_flag):
+def fetch_remote_oeis_entry(oeis_id: int, fetch_bfile_flag: bool) -> FetchResult:
 
-    # We fetch a raw version of the OEIS entry, which is easy to parse.
+    # We fetch a raw version of the OEIS entry, which is easiest to parse.
 
     main_url  = "http://oeis.org/search?q=id:A{oeis_id:06d}&fmt=text".format(oeis_id = oeis_id)
     bfile_url = "http://oeis.org/A{oeis_id:06d}/b{oeis_id:06d}.txt".format(oeis_id = oeis_id)
@@ -60,7 +62,7 @@ def fetch_remote_oeis_entry(oeis_id, fetch_bfile_flag):
     main_content = fetch_url(main_url)
 
     if not main_content_ok(main_content):
-        raise BadOeisResponse("OEIS server response indicates failure (url: )".format(main_url))
+        raise BadOeisResponse("OEIS server response indicates failure (url: {})".format(main_url))
 
     bfile_content = fetch_url(bfile_url) if fetch_bfile_flag else None
 

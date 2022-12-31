@@ -26,7 +26,7 @@ class FibLike:
         if weights is None:
             weights = [1] * n
         assert len(first) == n
-        values = [v for v in first]
+        values = list(first)
         while len(values) < num_values:
             v = sum(weights[i] * values[len(values) - n + i] for i in range(n)) + offset
             values.append(v)
@@ -48,4 +48,3 @@ for candidate_index in sorted(candidate_map[search1] & candidate_map[search2] & 
     print(oeis_entry, oeis_entry.name)
     print(oeis_entry.values)
     print()
-

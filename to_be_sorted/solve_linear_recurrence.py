@@ -5,14 +5,14 @@ import sys
 import logging
 import sqlite3
 import json
-
-import numpy as np
 from fractions import Fraction, gcd
-from fraction_based_linear_algebra import inverse_matrix
 from collections import OrderedDict
-from timer import start_timer
 import concurrent.futures
 
+import numpy as np
+
+from fraction_based_linear_algebra import inverse_matrix
+from timer import start_timer
 from oeis_entry import parse_oeis_entry
 from exit_scope import close_when_done
 from setup_logging import setup_logging
@@ -55,9 +55,9 @@ class Term:
                     return "a[i - {}] * i^{}".format(self.offset, self.beta)
             else:
                 if self.beta == 0:
-                    return "a[i - {}]^{}".format(self.offset, self.alpha, self.beta)
+                    return "a[i - {}]^{}".format(self.offset, self.alpha)
                 elif self.beta == 1:
-                    return "a[i - {}]^{} * i".format(self.offset, self.alpha, self.beta)
+                    return "a[i - {}]^{} * i".format(self.offset, self.alpha)
                 else:
                     return "a[i - {}]^{} * i^{}".format(self.offset, self.alpha, self.beta)
 
@@ -270,7 +270,7 @@ def poly_terms_generator():
     yield (filename_out, terms)
 
 
-def solve_linear_recurrences(database_filename_in, terms, exclude_entries = None):
+def solve_linear_recurrences(database_filename_in: str, terms, exclude_entries = None):
 
     if not os.path.exists(database_filename_in):
         logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename_in))
