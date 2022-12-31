@@ -5,14 +5,14 @@ import sys
 import time
 import logging
 import sqlite3
+import datetime
+import logging
 
 import numpy as np
 from matplotlib import pyplot as plt
 
 from utilities.exit_scope import close_when_done
 from utilities.setup_logging import setup_logging
-
-logger = logging.getLogger(__name__)
 
 
 def show_entries(database_filename: str) -> None:
@@ -46,6 +46,16 @@ def show_entries(database_filename: str) -> None:
 
     priority = age / np.maximum(stability, 1e-6)
 
+    plt.clf()
+
+    dt_local = datetime.datetime.fromtimestamp(t_current)
+    dt_local_str = dt_local.strftime("%Y-%m-%d %H:%M:%S")
+
+    plt.suptitle("OEIS local database status on {}\n{} entries; oldest: {:.1f} min; youngest: {:.1f} min".format(
+        dt_local_str, len(data), np.amax(age) / 60.0, np.amin(age) / 60.0))
+
+    plt.subplots_adjust(wspace = 0.6, hspace=0.6)
+
     plt.subplot(331)
     plt.xlabel("oeis id")
     plt.ylabel("t1 [h]")
@@ -75,7 +85,7 @@ def show_entries(database_filename: str) -> None:
     plt.hist(priority, bins = 200, log = True)
 
     # plt.xlabel("priority ({} values > {:.3f})".format(np.sum(priority > RANGE_MAX), RANGE_MAX))
-    plt.xlabel("priority [-].format")
+    plt.xlabel("priority (age/stability) [-]")
 
     plt.subplot(338)
     plt.hist(stability / 3600.0, bins = 200, log = True)
@@ -93,6 +103,7 @@ def main():
     database_filename = sys.argv[1]
 
     with setup_logging(None):
+        logging.getLogger("matplotlib").setLevel(logging.WARNING)
         show_entries(database_filename)
 
 
