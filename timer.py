@@ -1,3 +1,4 @@
+"""This module provides functionality for timing using a context manager."""
 
 import time
 import math
@@ -23,34 +24,36 @@ class TimerContextManager:
         self.t_stop = None
 
     def __enter__(self):
-        self.t_enter = time.time()
+        self.t_enter = time.monotonic()
         self.t_stop = None
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 
-    def stop(self):
-
+    def stop(self) -> None:
+        """Stop the timer if it hasn't previously been stopped."""
         if self.t_stop is None:
-            self.t_stop = time.time()
+            self.t_stop = time.monotonic()
 
-    def duration(self):
-
+    def duration(self) -> float:
+        """Stop timer and return duration, in seconds."""
         self.stop()
         return self.t_stop - self.t_enter
 
-    def duration_string(self):
+    def duration_string(self) -> str:
+        """Stop timer and return duration as a human-readable string."""
 
         duration = self.duration()
         return duration_as_string(duration)
 
     def etc(self, work_completed = None, work_remaining = None) -> float:
-        """Return estimated time to completion as a string."""
+        """Return estimated time to completion, in seconds."""
 
-        t_current = time.time()
+        t_current = time.monotonic()
 
-        assert (work_remaining is None) != (work_completed is None)
+        if (work_remaining is None) == (work_completed is None):
+            raise RuntimeError("Either work_completed or work_remaining should be specified, but not both.")
 
         if work_completed is None:
             work_completed = self.total_work - work_remaining
@@ -64,6 +67,7 @@ class TimerContextManager:
         return etc
 
     def etc_string(self, work_completed = None, work_remaining = None) -> str:
+        """Return estimated time to completion as a human-readable string."""
 
         etc = self.etc(work_completed, work_remaining)
 

@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#! /usr/bin/env -S python3 -B
 
 """This script fetches the remote OEIS database to a local SQLite3 database.
 

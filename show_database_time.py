@@ -5,15 +5,17 @@ import sys
 import time
 import logging
 import sqlite3
+
 import numpy as np
 from matplotlib import pyplot as plt
-from exit_scope    import close_when_done
+
+from exit_scope import close_when_done
 from setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
 
-def show_entries(database_filename):
+def show_entries(database_filename: str) -> None:
 
     if not os.path.exists(database_filename):
         logger.critical("Database file '{}' not found! Unable to continue.".format(database_filename))
@@ -21,15 +23,15 @@ def show_entries(database_filename):
 
     t_current = time.time()
 
-    with close_when_done(sqlite3.connect(database_filename)) as dbconn, close_when_done(dbconn.cursor()) as dbcursor:
+    with close_when_done(sqlite3.connect(database_filename)) as db_conn, close_when_done(db_conn.cursor()) as dbcursor:
         query = "SELECT oeis_id, t1, t2 FROM oeis_entries;"
         dbcursor.execute(query)
         data = dbcursor.fetchall()
 
     data_dtype = np.dtype([
             ("oeis_id", np.int),
-            ("t1"     , np.float64),
-            ("t2"     , np.float64)
+            ("t1", np.float64),
+            ("t2", np.float64)
         ]
     )
 
@@ -64,14 +66,16 @@ def show_entries(database_filename):
     plt.plot(stability / 3600.0, age / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(336)
-    #bins = np.logspace(-10.0, +20.0, 200)
-    #plt.hist(np.log10(priority), bins = bins, log = True)
+    # bins = np.logspace(-10.0, +20.0, 200)
+    # plt.hist(np.log10(priority), bins = bins, log = True)
 
-    RANGE_MAX = 0.15
+    # RANGE_MAX = None
+    # plt.hist(priority, range = (0, RANGE_MAX), bins = 200, log = True)
 
-    plt.hist(priority, range = (0, RANGE_MAX), bins = 200, log = True)
+    plt.hist(priority, bins = 200, log = True)
 
-    plt.xlabel("priority ({} values > {:.3f})".format(np.sum(priority > RANGE_MAX), RANGE_MAX))
+    # plt.xlabel("priority ({} values > {:.3f})".format(np.sum(priority > RANGE_MAX), RANGE_MAX))
+    plt.xlabel("priority [-].format")
 
     plt.subplot(338)
     plt.hist(stability / 3600.0, bins = 200, log = True)
