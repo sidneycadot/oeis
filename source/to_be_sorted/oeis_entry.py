@@ -4,7 +4,7 @@ import re
 import logging
 import collections
 
-from to_be_sorted.charmap import acceptable_characters
+from source.to_be_sorted.charmap import acceptable_characters
 
 logger = logging.getLogger(__name__)
 

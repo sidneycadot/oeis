@@ -3,7 +3,7 @@ import logging
 import glob
 import json
 from collections import OrderedDict
-from timer import start_timer
+from source.utilities.timer import start_timer
 
 logger = logging.getLogger(__name__)
 

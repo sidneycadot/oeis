@@ -9,8 +9,8 @@ import sqlite3
 import numpy as np
 from matplotlib import pyplot as plt
 
-from exit_scope import close_when_done
-from setup_logging import setup_logging
+from utilities.exit_scope import close_when_done
+from utilities.setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 

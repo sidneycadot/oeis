@@ -9,9 +9,9 @@ import sqlite3
 import concurrent.futures
 
 from oeis_entry import parse_oeis_entry
-from timer import start_timer
-from exit_scope import close_when_done
-from setup_logging import setup_logging
+from source.utilities.timer import start_timer
+from source.utilities.exit_scope import close_when_done
+from source.utilities.setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 

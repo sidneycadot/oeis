@@ -21,10 +21,10 @@ import lzma
 import concurrent.futures
 from typing import Set
 
-from fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
-from timer import start_timer
-from exit_scope import close_when_done
-from setup_logging import setup_logging
+from utilities.fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
+from utilities.timer import start_timer
+from utilities.exit_scope import close_when_done
+from utilities.setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 

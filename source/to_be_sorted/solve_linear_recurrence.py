@@ -12,10 +12,10 @@ import concurrent.futures
 import numpy as np
 
 from fraction_based_linear_algebra import inverse_matrix
-from timer import start_timer
+from source.utilities.timer import start_timer
 from oeis_entry import parse_oeis_entry
-from exit_scope import close_when_done
-from setup_logging import setup_logging
+from source.utilities.exit_scope import close_when_done
+from source.utilities.setup_logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
