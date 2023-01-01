@@ -17,6 +17,7 @@ def duration_as_string(seconds: float) -> str:
 
 
 class TimerContextManager:
+    """A context manager that allows timing of its execution time."""
 
     def __init__(self, total_work):
         self.total_work = total_work
@@ -75,4 +76,5 @@ class TimerContextManager:
 
 
 def start_timer(total_work = None) -> TimerContextManager:
+    """Return a context timer that allows timing of its execution."""
     return TimerContextManager(total_work)
