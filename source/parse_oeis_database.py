@@ -82,7 +82,9 @@ def main():
 
     with setup_logging(logfile):
 
-        # We need to increase this setting from its default to allow all b-files to be processed.
+        # In recent versions of Python this setting was introduced.
+        # We need to increase it from its default value of 4300 to allow all b-files to be processed.
+
         try:
             sys.set_int_max_str_digits(40000)
         except AttributeError:

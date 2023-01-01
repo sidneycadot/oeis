@@ -1,13 +1,13 @@
-#! /usr/bin/env python3
+#! /usr/bin/env -S python3 -B
 
 # The 95 printable ASCII characters.
 # This includes the space character (0x20), but excludes control characters (0x00--0x1f) and the DEL character (0x7f).
 
 ASCII = frozenset(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~")
 
-# These are the characters that actually occur:
+# These are the characters that actually occur in the different directives:
 
-occuring_characters = {
+occurring_characters = {
     'N' : ASCII | frozenset("\xa0\xad°´·ºÁÃ×àáäåèéíîóöøúüĀńőŜσωआटभयर्ṭ’•…∈≤≥⌈⌉ﬀﬁﬂ"),
     'C' : ASCII | frozenset("¢£§«°±²´·º»½ÁÇ×ÜßàáäåçèéëíîïñòóôõöøùúüýāăćčęěħıłńőřśşšťžΧβγμπρστωϱавдеилмнопрстучшыьяաבוכלᵣᵤḠ\u200b—‘’“”…′ℕ↑⇒∈∏∑∞∩∫≅≈≠≤≥⊂⊆⊗⌈⌉\u3000八發\uf020ﬁﬂ\ufeff𝒩𝓁"),
     'D' : ASCII | frozenset("\x7f§«°±´¸»ÁÇÉÖ×ÚÜßàáäåçèéêëíîïñóôõöøùúüýăąćČčěłńőŒřŚŞşŠšũūżžǎ́Λλμπϕ\u2002\u2009\u200e‐—’“”…∞∪≡ﬀﬁ"),
@@ -47,10 +47,11 @@ acceptable_characters = {
 
 
 def main():
-    for key in sorted(acceptable_characters):
-        assert occuring_characters[key].issuperset(acceptable_characters[key])
 
-        unwanted_characters = occuring_characters[key] - acceptable_characters[key]
+    for key in sorted(acceptable_characters):
+        assert occurring_characters[key].issuperset(acceptable_characters[key])
+
+        unwanted_characters = occurring_characters[key] - acceptable_characters[key]
 
         if len(unwanted_characters) > 0:
             print("key {} has unwanted characters: {}".format(key, ", ".join("{!r}".format(c) for c in sorted(unwanted_characters))))

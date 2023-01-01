@@ -209,11 +209,14 @@ def fetch_entries_into_database(db_conn, entries) -> None:
 
             with start_timer() as batch_timer:
 
-                # Execute fetches in parallel.
+                # Execute the fetches in parallel.
                 responses = list(executor.map(safe_fetch_remote_oeis_entry, batch))
 
-                logger.info("%d fetches took %s (%.3f fetches/second).",
-                            batch_size, batch_timer.duration_string(), batch_size / batch_timer.duration())
+                fetch_noun = "fetch" if batch_size == 1 else "fetches"
+
+                logger.info("%d %s took %s (%.3f fetches/second).",
+                            batch_size, fetch_noun,
+                            batch_timer.duration_string(), batch_size / batch_timer.duration())
 
             # Process the responses by updating the database.
 
