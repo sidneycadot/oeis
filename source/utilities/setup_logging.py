@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class MyFormatter(logging.Formatter):
+class _MyFormatter(logging.Formatter):
     """A formatter that is identical to the default Formatter, except that it replaces the comma by a period in the time."""
     def formatTime(self, record, datefmt = None):
         s = logging.Formatter.formatTime(self, record, datefmt)
@@ -71,7 +71,7 @@ class LoggingContextManager:
 
         if len(handlers) > 0:
 
-            formatter = MyFormatter(fmt = self.fmt)
+            formatter = _MyFormatter(fmt = self.fmt)
 
             for handler in handlers:
                 assert handler.formatter is None
@@ -92,10 +92,11 @@ class LoggingContextManager:
 
 
 def setup_logging(*args, **kwargs):
+    """This function returns a context manager that encapsulates proper initialization and teardown of logging."""
     return LoggingContextManager(*args, **kwargs)
 
 
-def test_logging():
+def _test_logging():
 
     logger.debug("This is a debug message.")
     logger.log(logging.PROGRESS, "This is a progress message.")
@@ -108,7 +109,7 @@ def test_logging():
 def main():
 
     with setup_logging("test_%Y%m%d_%H%M%S.log", noisy = True):
-        test_logging()
+        _test_logging()
 
 
 if __name__ == "__main__":
