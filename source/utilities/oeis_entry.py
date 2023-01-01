@@ -191,7 +191,7 @@ def parse_value_directives(dv, directives) -> Optional[List[int]]:
     return values
 
 
-def check_keywords(oeis_id: int, keywords, found_issue: Callable) -> None:
+def check_keywords(oeis_id: int, keywords, found_issue: Callable[[OeisIssue], None]) -> None:
     """Check the set of keywords, looking for issues."""
 
     """Check forbidden combinations of keywords."""
@@ -272,7 +272,7 @@ def check_keywords(oeis_id: int, keywords, found_issue: Callable) -> None:
             ))
 
 
-def parse_bfile_content(oeis_id: int, bfile_content: str, found_issue: Callable) -> Tuple[Optional[int], List[int]]:
+def parse_bfile_content(oeis_id: int, bfile_content: str, found_issue: Callable[[OeisIssue], None]) -> Tuple[Optional[int], List[int]]:
     """Parse the content of a b-file.
 
     A b-file should contain lines with two integer values: an index, and a value.
@@ -327,7 +327,7 @@ def parse_bfile_content(oeis_id: int, bfile_content: str, found_issue: Callable)
     return (first_index, values)
 
 
-def parse_main_content(oeis_id, main_content, found_issue: Callable):
+def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue], None]):
 
     # The order and count of expected directives, for any given entry, is as follows:
     #
@@ -579,7 +579,7 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable):
             offset_a, offset_b, author, extensions_and_errors)
 
 
-def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_issue: Callable) -> OeisEntry:
+def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_issue: Callable[[OeisIssue], None]) -> OeisEntry:
 
     (identification, main_values, name, comments, detailed_references, links, formulas, examples,
      maple_programs, mathematica_programs, other_programs, cross_references, keywords,
@@ -638,7 +638,7 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
                     "%O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(offset_b, first_index_where_magnitude_exceeds_1)
                 ))
 
-    # Return parsed values.
+    # Return parsed values as an OeisEntry.
 
     return OeisEntry(oeis_id, identification, values, name, comments, detailed_references, links, formulas, examples,
                      maple_programs, mathematica_programs, other_programs, cross_references, keywords,
