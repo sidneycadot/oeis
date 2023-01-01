@@ -51,7 +51,7 @@ def process_database_entries(database_filename_in: str) -> None:
         with close_when_done(sqlite3.connect(database_filename_in)) as dbconn_in, close_when_done(dbconn_in.cursor()) as dbcursor_in, \
              concurrent.futures.ProcessPoolExecutor() as pool:
 
-            dbcursor_in.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id LIMIT 21000;")
+            dbcursor_in.execute("SELECT oeis_id, main_content, bfile_content FROM oeis_entries ORDER BY oeis_id;")
 
             while True:
 
@@ -83,7 +83,10 @@ def main():
     with setup_logging(logfile):
 
         # We need to increase this setting from its default to allow all b-files to be processed.
-        sys.set_int_max_str_digits(40000)
+        try:
+            sys.set_int_max_str_digits(40000)
+        except AttributeError:
+            pass
 
         process_database_entries(args.filename)
 
