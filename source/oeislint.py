@@ -72,7 +72,7 @@ def process_database_entries(database_filename: str, lint_output_filename: str) 
 
         with open(lint_output_filename, "w") as fo:
             for issue in issues:
-                print("{:3s}  A{:06d}  {}".format(issue.oeis_id, issue.issue_type.name, issue.description), file=fo)
+                print("{:3s}  A{:06d}  {}".format(issue.issue_type.name, issue.oeis_id, issue.description), file=fo)
 
         logger.info("Wrote '%s'", lint_output_filename)
 
