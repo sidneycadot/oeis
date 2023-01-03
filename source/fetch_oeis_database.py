@@ -256,12 +256,39 @@ def make_database_complete(db_conn, highest_oeis_id: int) -> None:
     fetch_entries_into_database(db_conn, missing_entries)
 
 
+def update_database_manual_fetch(db_conn, filename: str, highest_oeis_id: int) -> None:
+    """Fetch entries specified in a file."""
+
+    fetch_entries = set()
+    try:
+        with open(filename, "r") as fi:
+            for line in fi:
+                line = line.strip()
+                if len(line) != 0 and not line.startswith("#"):
+                    try:
+                        entry = int(line)
+                        if 1 <= entry <= highest_oeis_id:
+                            fetch_entries.add(entry)
+                    except ValueError:
+                        logger.warning("Ignored bad entry in '%s' file: '%s'", filename, line)
+    except FileNotFoundError:
+        logger.info("File '%s' not found, skipping manual fetch step.", filename)
+        return
+
+    logger.info("Manually specified entries to be refreshed as specified in '%s': %d.", filename, len(fetch_entries))
+
+    fetch_entries_into_database(db_conn, fetch_entries)
+
+    logging.info("Removing file '%s' ...", filename)
+    os.remove(filename)
+
+
 def update_database_entries_randomly(db_conn, max_count: int) -> None:
     """Re-fetch (update) a random subset of entries that are already present in the local SQLite database."""
 
-    with close_when_done(db_conn.cursor()) as dbcursor:
-        dbcursor.execute("SELECT oeis_id FROM oeis_entries;")
-        present_entries = dbcursor.fetchall()
+    with close_when_done(db_conn.cursor()) as db_cursor:
+        db_cursor.execute("SELECT oeis_id FROM oeis_entries;")
+        present_entries = db_cursor.fetchall()
 
     present_entries = [oeis_id for (oeis_id, ) in present_entries]
 
@@ -406,6 +433,8 @@ def database_update_cycle(database_filename: str) -> None:
             ensure_database_schema_created(db_conn)
             # Make sure we have all entries (full fetch on first run).
             make_database_complete(db_conn, highest_oeis_id)
+            # Refresh entries found in the "oeis_fetch.txt" file.
+            update_database_manual_fetch(db_conn, "oeis_fetch.txt", highest_oeis_id)
             # Refresh 0.1 % of entries randomly.
             update_database_entries_randomly(db_conn, highest_oeis_id // 1000)
             # Refresh 0.5 % of entries by priority.
