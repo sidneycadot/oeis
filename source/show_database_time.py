@@ -101,13 +101,15 @@ def show_entries(database_filename: str) -> None:
 
 def main():
 
+    default_database_filename = "oeis.sqlite3"
+
     parser = argparse.ArgumentParser(description="Show graphs of timing info of OEIS entries in an SQLite3 database.")
 
-    parser.add_argument("-f", dest="filename", type=str, default="oeis.sqlite3", help="OEIS SQLite3 database")
+    parser.add_argument("-f", dest="filename", type=str, default=default_database_filename, help="OEIS SQLite3 database (default: {})".format(default_database_filename))
 
     args = parser.parse_args()
 
-    with setup_logging(None):
+    with setup_logging():
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
         show_entries(args.filename)
 

@@ -1,6 +1,6 @@
 #! /usr/bin/env -S python3 -B
 
-"""Write pickled version of an OEIS database."""
+"""Write a pickled version of an OEIS SQLite3 database."""
 
 import os
 import argparse
@@ -9,8 +9,9 @@ import logging
 import sqlite3
 import concurrent.futures
 import pickle
+from typing import Tuple
 
-from utilities.oeis_entry import parse_oeis_entry
+from utilities.oeis_entry import parse_oeis_entry, OeisEntry
 from utilities.timer import start_timer
 from utilities.exit_scope import close_when_done
 from utilities.setup_logging import setup_logging
@@ -18,7 +19,7 @@ from utilities.setup_logging import setup_logging
 logger = logging.getLogger(__name__)
 
 
-def process_oeis_entry(oeis_entry):
+def process_oeis_entry(oeis_entry: Tuple[int, str, str]) -> OeisEntry:
 
     (oeis_id, main_content, bfile_content) = oeis_entry
 

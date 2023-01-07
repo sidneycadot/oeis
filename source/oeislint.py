@@ -8,10 +8,10 @@ import sys
 import logging
 import sqlite3
 import concurrent.futures
-from typing import Tuple
+from typing import Tuple, List
 from collections import Counter
 
-from utilities.oeis_entry import parse_oeis_entry, OeisIssueType
+from utilities.oeis_entry import parse_oeis_entry, OeisIssue
 from utilities.timer import start_timer
 from utilities.exit_scope import close_when_done
 from utilities.setup_logging import setup_logging
@@ -19,7 +19,7 @@ from utilities.setup_logging import setup_logging
 logger = logging.getLogger(__name__)
 
 
-def process_oeis_entry(oeis_entry: Tuple[int, str, str]):
+def process_oeis_entry(oeis_entry: Tuple[int, str, str]) -> List[OeisIssue]:
 
     (oeis_id, main_content, bfile_content) = oeis_entry
 
@@ -37,7 +37,7 @@ def process_database_entries(database_filename: str, lint_output_filename: str) 
         return
 
     batch_size = 1000
-    issues = []
+    issues: List[OeisIssue] = []
 
     with start_timer() as timer, \
          close_when_done(sqlite3.connect(database_filename)) as db_conn, \
@@ -55,7 +55,7 @@ def process_database_entries(database_filename: str, lint_output_filename: str) 
                 break
 
             logger.log(logging.PROGRESS, "Processing OEIS entries A%06d to A%06d (issues found so far: %d) ...",
-                oeis_entries[0][0], oeis_entries[-1][0], len(issues))
+                       oeis_entries[0][0], oeis_entries[-1][0], len(issues))
 
             for processed in pool.map(process_oeis_entry, oeis_entries):
                 issues.extend(processed)
@@ -72,17 +72,19 @@ def process_database_entries(database_filename: str, lint_output_filename: str) 
 
         with open(lint_output_filename, "w") as fo:
             for issue in issues:
-                print("{:3s}  A{:06d}  {}".format(issue.issue_type.name, issue.oeis_id, issue.description), file=fo)
+                print("A{:06d} ({:3s}) {:s}".format(issue.oeis_id, issue.issue_type.name, issue.description), file=fo)
 
         logger.info("Wrote '%s'", lint_output_filename)
 
+
 def main():
+
+    default_database_filename = "oeis.sqlite3"
+    default_lint_output_filename = "oeislint_output.txt"
 
     parser = argparse.ArgumentParser(description="Check all OEIS entries in a SQLite3 database.")
 
-    default_lint_output_filename = "oeislint_output.txt"
-
-    parser.add_argument("-f", dest="filename", type=str, default="oeis.sqlite3", help="OEIS SQLite3 database")
+    parser.add_argument("-f", dest="filename", type=str, default=default_database_filename, help="OEIS SQLite3 database (default: {})".format(default_database_filename))
     parser.add_argument("--lint-output-filename", "-o", type=str, default=default_lint_output_filename, help="output filename (default: '{}')".format(default_lint_output_filename))
 
     args = parser.parse_args()
