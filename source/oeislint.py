@@ -54,8 +54,8 @@ def process_database_entries(database_filename: str, lint_output_filename: str) 
             if len(oeis_entries) == 0:
                 break
 
-            logger.log(logging.PROGRESS, "Processing OEIS entries A{:06d} to A{:06d} (issues found so far: {}) ...".format(
-                oeis_entries[0][0], oeis_entries[-1][0], len(issues)))
+            logger.log(logging.PROGRESS, "Processing OEIS entries A%06d to A%06d (issues found so far: %d) ...",
+                oeis_entries[0][0], oeis_entries[-1][0], len(issues))
 
             for processed in pool.map(process_oeis_entry, oeis_entries):
                 issues.extend(processed)
