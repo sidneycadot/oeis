@@ -24,7 +24,7 @@ def process_oeis_entry(oeis_entry):
 
     parsed_entry = parse_oeis_entry(
         oeis_id, main_content, bfile_content,
-        lambda issue: logger.warning("A%06d:%s: %s", issue.oeis_id, issue.issue_type.name, issue.description)
+        lambda issue: logger.warning("A%06d (%s) %s", issue.oeis_id, issue.issue_type.name, issue.description)
     )
 
     return parsed_entry
@@ -69,11 +69,12 @@ def process_database_entries(database_filename: str, pickle_filename: str) -> No
 
 def main():
 
+    default_database_filename = "oeis.sqlite3"
     default_pickle_output_filename = "oeis.pickle"
 
     parser = argparse.ArgumentParser(description="Parse main and b-files of all entries in a SQLite3 database.")
 
-    parser.add_argument("filename", type=str)
+    parser.add_argument("-f", dest="filename", type=str, default=default_database_filename, help="OEIS SQLite3 database (default: {})".format(default_database_filename))
     parser.add_argument("--pickle-output-filename", "-o", type=str, default=default_pickle_output_filename, help="output filename (default: '{}')".format(default_pickle_output_filename))
 
     args = parser.parse_args()

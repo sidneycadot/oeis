@@ -82,7 +82,7 @@ def main():
 
     default_lint_output_filename = "oeislint_output.txt"
 
-    parser.add_argument("filename", type=str, help="input filename")
+    parser.add_argument("-f", dest="filename", type=str, default="oeis.sqlite3", help="OEIS SQLite3 database")
     parser.add_argument("--lint-output-filename", "-o", type=str, default=default_lint_output_filename, help="output filename (default: '{}')".format(default_lint_output_filename))
 
     args = parser.parse_args()

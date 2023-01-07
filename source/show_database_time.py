@@ -103,7 +103,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Show graphs of timing info of OEIS entries in an SQLite3 database.")
 
-    parser.add_argument("filename", type=str, default="oeis.sqlite3")
+    parser.add_argument("-f", dest="filename", type=str, default="oeis.sqlite3", help="OEIS SQLite3 database")
 
     args = parser.parse_args()
 
