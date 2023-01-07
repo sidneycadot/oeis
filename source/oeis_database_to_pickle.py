@@ -54,7 +54,7 @@ def process_database_entries(database_filename: str, pickle_filename: str) -> No
                 if len(oeis_entries) == 0:
                     break
 
-                logger.log(logging.PROGRESS, "Processing OEIS entries A%06s to A%06s ...",
+                logger.log(logging.PROGRESS, "Processing OEIS entries A%06d to A%06d ...",
                            oeis_entries[0][0], oeis_entries[-1][0])
 
                 entries.extend(pool.map(process_oeis_entry, oeis_entries))
