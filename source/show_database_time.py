@@ -56,14 +56,19 @@ def show_entries(database_filename: str) -> None:
     plt.subplots_adjust(wspace = 0.6, hspace=0.6)
 
     plt.subplot(331)
-    plt.xlabel("oeis id")
+    plt.xlabel("oeis id (/1000)")
     plt.ylabel("t1 [h]")
-    plt.plot(oeis_id, (t1 - t_now) / 3600.0, '.', markersize = 0.5)
+    plt.plot(oeis_id / 1000.0, (t1 - t_now) / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(332)
-    plt.xlabel("oeis id")
+    plt.xlabel("oeis id (/1000)")
     plt.ylabel("t2 [h]")
-    plt.plot(oeis_id, (t2 - t_now) / 3600.0, '.', markersize = 0.5)
+    plt.plot(oeis_id / 1000.0, (t2 - t_now) / 3600.0, '.', markersize = 0.5)
+
+    plt.subplot(333)
+    plt.xlabel("t1 [h]")
+    plt.ylabel("t2 [h]")
+    plt.plot((t1 - t_now) / 3600.0, (t2 - t_now) / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(334)
     plt.hist(age / 3600.0, bins = 200, log = True)
@@ -76,7 +81,7 @@ def show_entries(database_filename: str) -> None:
 
     plt.subplot(336)
 
-    (almost_highest, really_highest) = np.percentile(priority, [99.999, 100.0])
+    (almost_highest, really_highest) = np.percentile(priority, [99.0, 100.0])
     range_max = really_highest if really_highest / almost_highest < 2.0 else almost_highest
 
     plt.hist(priority, range = (0, range_max), bins = 200, log = True)
