@@ -25,7 +25,7 @@ class OeisEntry(NamedTuple):
     cross_references: str
     keywords: List[str]
     offset_a: int
-    offset_b: int
+    offset_b: Optional[int]
     author: str
     extensions_and_errors: str
 
@@ -143,8 +143,9 @@ def parse_optional_multiline_directive(dv, directive):
 
 
 def parse_mandatory_single_line_directive(dv, directive):
-    assert directive in dv
-    assert len(dv[directive]) == 1
+    ok = (directive in dv) and (len(dv[directive]) == 1)
+    if not ok:
+        raise RuntimeError("Bad mandatory directive.")
     return dv[directive][0]
 
 
@@ -152,7 +153,9 @@ def parse_optional_single_line_directive(dv, directive):
     if directive not in dv:
         return None
     else:
-        assert len(dv[directive]) == 1
+        ok = (len(dv[directive]) == 1)
+        if not ok:
+            raise RuntimeError("Bad optional directive.")
         return dv[directive][0]
 
 
@@ -382,13 +385,9 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
 
     if True:  # Check format
 
-        header = "# Greetings from The On-Line Encyclopedia of Integer Sequences! http://oeis.org/\n\nSearch: id:a{:06}\nShowing 1-1 of 1\n\n".format(oeis_id)
-
         check_main_content = ["%{} A{:06}{}{}\n".format(directive, oeis_id, "" if directive_value == "" else " ", directive_value) for (directive, directive_value) in lines]
 
-        footer = "\n# Content is available under The OEIS End-User License Agreement: http://oeis.org/LICENSE\n"
-
-        check_main_content = header + "".join(check_main_content) + footer
+        check_main_content = "".join(check_main_content)
 
         if main_content != check_main_content:
             found_issue(OeisIssue(
@@ -403,7 +402,8 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
 
     directive_order = "".join(directive for (directive, directive_value) in lines)
 
-    assert expected_directive_order.match(directive_order)
+    if not expected_directive_order.match(directive_order):
+        raise RuntimeError("Unexpected directive order.")
 
     # Collect directives
 
@@ -610,7 +610,8 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
                 main_values[:10], bfile_values[:10])
         ))
 
-        # The main values are the safest choice.
+        # In case of disagreement between the main file and the b-file,
+        # the main file values are the safest choice.
         values = main_values
 
     if offset_a is not None:
@@ -625,18 +626,19 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
 
     if offset_b is not None:
 
-        indexes_where_magnitude_exceeds_1 = [i for i in range(len(values)) if abs(values[i]) > 1]
+        indices_where_magnitude_exceeds_one = [i for i in range(len(values)) if abs(values[i]) > 1]
 
-        if len(indexes_where_magnitude_exceeds_1) > 0:
+        if len(indices_where_magnitude_exceeds_one) > 0:
+            expected_offset_b_value = 1 + min(indices_where_magnitude_exceeds_one)
+        else:
+            expected_offset_b_value = 1
 
-            first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
-
-            if offset_b != first_index_where_magnitude_exceeds_1:
-                found_issue(OeisIssue(
-                    oeis_id,
-                    OeisIssueType.P09,
-                    "%O directive claims first index where magnitude exceeds 1 is {}, but values suggest this should be {}.".format(offset_b, first_index_where_magnitude_exceeds_1)
-                ))
+        if offset_b != expected_offset_b_value:
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P09,
+                "%O directive claims first element where magnitude exceeds 1 is at position {}, but values suggest this should be {}.".format(offset_b, expected_offset_b_value)
+            ))
 
     # Return parsed values as an OeisEntry.
 
