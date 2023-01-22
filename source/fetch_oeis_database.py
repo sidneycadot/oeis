@@ -60,8 +60,8 @@ def find_highest_oeis_id():
 
     sleep_after_failure = 5.0
 
-    success_id = 350000            # We know a-priori that this entry exists.
-    failure_id = 100 * success_id  # We know a-priori that this entry does not exist.
+    success_id = 360000           # We know a-priori that this entry exists.
+    failure_id = 10 * success_id  # We know a-priori that this entry does not exist.
 
     # Do a binary search, looking for the success/failure boundary.
     while success_id + 1 != failure_id:
