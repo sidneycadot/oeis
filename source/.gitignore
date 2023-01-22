@@ -1,4 +1,4 @@
 *.pickle
 *.sqlite3
-oeslint_output.txt
-
+oes_lint_output.txt
+oeis_fetch.txt
