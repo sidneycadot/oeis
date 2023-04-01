@@ -33,11 +33,11 @@ def extract_database_entry(database_filename: str, oeis_ids: List[int]) -> None:
         oeis_entries = db_cursor.fetchall()
 
         for (oeis_id, main_content, bfile_content) in oeis_entries:
-            logger.info("Writing a{:06d}.txt ...".format(oeis_id))
-            with open("a{:06}.txt".format(oeis_id), "w") as fo:
+            logger.info("Writing a{:06d}_local.txt ...".format(oeis_id))
+            with open("a{:06}_local.txt".format(oeis_id), "w") as fo:
                 fo.write(main_content)
-            logger.info("Writing b{:06d}.txt ...".format(oeis_id))
-            with open("b{:06}.txt".format(oeis_id), "w") as fo:
+            logger.info("Writing b{:06d}_local.txt ...".format(oeis_id))
+            with open("b{:06}_local.txt".format(oeis_id), "w") as fo:
                 fo.write(bfile_content)
 
 def main():
