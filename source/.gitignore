@@ -1,4 +1,14 @@
-*.pickle
+# Database and pickle files.
 *.sqlite3
-oes_lint_output.txt
+*.pickle
+
+# Output file of the "oeis_lint.py" script.
+oeis_lint_output.txt
+
+# Output files of the "verify_characters.py" script.
+verify_characters_output.txt
+occurring_characters.py
+
+# File used to force fetches of certain entries;
+# used by the "fetch_poeis_database.py" script.
 oeis_fetch.txt
