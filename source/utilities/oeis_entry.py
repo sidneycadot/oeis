@@ -5,7 +5,7 @@ import collections
 from enum import Enum
 from typing import NamedTuple, List, Tuple, Optional, Callable
 
-from .charmap import acceptable_characters
+from occurring_characters import occurring_characters_per_directive as acceptable_characters
 
 
 class OeisEntry(NamedTuple):
@@ -66,16 +66,16 @@ class OeisIssueType(Enum):
     P28 = "Keyword 'dead' occurs in combination with other keywords, which should not happen."
     P29 = "Keyword 'recycled' occurs in combination with other keywords, which should not happen."
     P30 = "Keyword 'nonn' or 'sign' are both absent."
-
+    P31 = "The entry shouldn't have a b-file that is not system-generated."
 
 class OeisIssue(NamedTuple):
-    """Represents an OeisIssue found while parsing."""
+    """Represents an issue found while parsing."""
     oeis_id: int
     issue_type: OeisIssueType
     description: str
 
-
-expected_directive_order = re.compile("I(?:S|ST|STU)(?:|V|VW|VWX)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
+# Note that the %V / %W / %X directives have been retired.
+expected_directive_order = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
 
 identification_pattern = re.compile("[MN][0-9]{4}( [MN][0-9]{4})*$")
 
@@ -159,29 +159,22 @@ def parse_optional_single_line_directive(dv, directive):
         return dv[directive][0]
 
 
-def parse_value_directives(dv, directives) -> Optional[List[int]]:
+def parse_value_directives(dv, directive) -> List[int]:
 
-    expect_next = 0  # -1 = no, 0 = maybe (first line), 1 = yes
+    ok = (directive in dv) and (len(dv[directive]) >= 1)
+    if not ok:
+        raise RuntimeError("Bad value directive.")
+
+    expect_next = True  # -1 = no, 0 = maybe (first line), 1 = yes
 
     lines = []
 
-    for directive in directives:
-        if directive in dv:
-            assert len(dv[directive]) == 1
-            line = dv[directive][0]
-            lines.append(line)
-            if line.endswith(","):
-                expect_next = 1
-            else:
-                expect_next = -1
-        else:
-            assert expect_next <= 0
-            expect_next = -1
+    for line in dv[directive]:
+        assert expect_next
+        lines.append(line)
+        expect_next = line.endswith(",")
 
-    assert expect_next == -1
-
-    if len(lines) == 0:
-        return None
+    assert not expect_next
 
     lines = "".join(lines)
 
@@ -197,7 +190,36 @@ def parse_value_directives(dv, directives) -> Optional[List[int]]:
 def check_keywords(oeis_id: int, keywords, found_issue: Callable[[OeisIssue], None]) -> None:
     """Check the set of keywords, looking for issues."""
 
-    """Check forbidden combinations of keywords."""
+    # Check for unexpected keywords.
+
+    unexpected_keywords = set(keywords) - expected_keywords_set
+
+    for unexpected_keyword in sorted(unexpected_keywords):
+        if unexpected_keyword == "":
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P13,
+                "Unexpected empty keyword in %K directive value."
+            ))
+        else:
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P15,
+                "Unexpected keyword '{}' in %K directive value.".format(unexpected_keyword)
+            ))
+
+    # Check for duplicate keywords.
+
+    keyword_counter = collections.Counter(keywords)
+    for (keyword, count) in keyword_counter.items():
+        if count > 1:
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P11,
+                "Keyword '{}' occurs {} times in %K directive value.".format(keyword, count)
+            ))
+
+    # Check forbidden combinations of keywords.
 
     if "tabl" in keywords and "tabf" in keywords:
         found_issue(OeisIssue(
@@ -330,14 +352,52 @@ def parse_bfile_content(oeis_id: int, bfile_content: str, found_issue: Callable[
     return (first_index, values)
 
 
-def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue], None]):
+def parse_main_content_directives(oeis_id: int, main_content: str) -> List[str]:
+    """Split a main-content string into its constituent directives.
+    
+    Two complications:
+    
+    (1) some directive content may include newlines.
+    (2) Sometimes we see stuff that looks like a directive, but isn't.
+    
+    Note that the directives V/W/X are no loner used.
+    """
+    directive_pattern = "^%[ISTUNCDHFeptoYKOAE] A{:06d}".format(oeis_id)
+    directive_regexp = re.compile(directive_pattern, re.MULTILINE)
+
+    directive_indices = [m.start() for m in directive_regexp.finditer(main_content)]
+    if directive_indices[0] != 0:
+        raise ValueError("A{:06d}: the main file doesn't start with the expected directive pattern.".format(oeis_id))
+
+    directive_indices = directive_indices[1:]
+    directive_indices.append(len(main_content))
+
+    directives = []
+    start_index = 0
+    for end_index in directive_indices:
+        if main_content[end_index - 1] != '\n':
+            raise vValueError("A{:06d}: a directive doesn't end with a newline character".format(oeis_id))
+        directives.append((main_content[start_index+1:start_index+2], main_content[start_index+10:end_index - 1]))
+        start_index = end_index
+
+    reconstruction = "".join("%{} A{:06d}{}\n".format(directive, oeis_id, content) for (directive, content) in directives)
+
+    if reconstruction != main_content:
+        raise ValueError("A{:06d}: the main content cannot be reconstructed from its directives.".format(oeis_id))
+
+    return directives
+
+
+acceptable_characters = {
+}
+
+def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue], None]) -> Tuple:
 
     # The order and count of expected directives, for any given entry, is as follows:
     #
     # * %I   one                Identification line.
     # * %STU S/ST/STU           Unsigned values.
-    # * %VWX V/VW/VWX           Signed values.
-    # * %N   one                Name.
+    # * %N   one                Name of the sequence.
     # - %C   zero or more       Comments.
     # - %D   zero or more       Detailed references.
     # - %H   zero or more       Links.
@@ -352,86 +412,47 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
     # - %A   zero or one        Author, submitter, or authority.
     # - %E   zero or more       Extensions and errors.
 
-    # Select only lines that have the proper directive format.
+    directives = parse_main_content_directives(oeis_id, main_content)
 
-    directive_line_pattern = "%(.) A{:06d}(.*)$".format(oeis_id)
+    # Check the order of the directives found.
 
-    lines = re.findall(directive_line_pattern, main_content, re.MULTILINE)
-
-    # remove space between Axxxxxx and value
-
-    new_lines = []
-    for (directive, directive_value) in lines:
-        if directive_value != "":
-            if directive_value.startswith(" "):
-                directive_value = directive_value[1:]
-                if directive_value == "":
-                    found_issue(OeisIssue(
-                        oeis_id,
-                        OeisIssueType.P18,
-                        "The %{} directive has a trailing space but no value.".format(directive)
-                    ))
-            else:
-                found_issue(OeisIssue(
-                    oeis_id,
-                    OeisIssueType.P16,
-                    "The %{} directive should have a space before the start of its value.".format(directive)
-                ))
-
-        new_lines.append((directive, directive_value))
-
-    lines = new_lines
-    del new_lines
-
-    if True:  # Check format
-
-        check_main_content = ["%{} A{:06}{}{}\n".format(directive, oeis_id, "" if directive_value == "" else " ", directive_value) for (directive, directive_value) in lines]
-
-        check_main_content = "".join(check_main_content)
-
-        if main_content != check_main_content:
-            found_issue(OeisIssue(
-                oeis_id,
-                OeisIssueType.P17,
-                "Main content reconstruction failed (original: {!r}; reconstruction: {!r}).".format(
-                    main_content, check_main_content
-                )
-            ))
-
-    # Check order of directives
-
-    directive_order = "".join(directive for (directive, directive_value) in lines)
+    directive_order = "".join(directive for (directive, directive_value) in directives)
 
     if not expected_directive_order.match(directive_order):
-        raise RuntimeError("Unexpected directive order.")
+        raise RuntimeError("Unexpected directive order: {!r}".format(directive_order))
 
     # Collect directives
 
     dv = {}
 
-    for (directive, value) in lines:
+    for (directive, value) in directives:
+
+        if directive in "STU":
+            directive = "STU"
+
+        if len(value) != 0:
+            assert value.startswith(" ")
+            value = value[1:]
 
         if directive not in dv:
             dv[directive] = []
 
         dv[directive].append(value)
 
-        if directive in acceptable_characters:
-            unacceptable_characters = set(value) - acceptable_characters[directive]
-            if unacceptable_characters:
-                found_issue(OeisIssue(
-                    oeis_id,
-                    OeisIssueType.P10,
-                    "Unacceptable characters in value of %{} directive ({!r}): {}.".format(
-                        directive, value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])
-                    )
-                ))
+        #unacceptable_characters = set(value) - acceptable_characters[directive]
+        #if unacceptable_characters:
+        #    found_issue(OeisIssue(
+        #        oeis_id,
+        #        OeisIssueType.P10,
+        #        "Unacceptable characters in value of %{} directive ({!r}): {}.".format(
+        #            directive, value, ", ".join(["{!r}".format(c) for c in sorted(unacceptable_characters)])
+        #        )
+        #    ))
 
-    # Parse all directives
+    # Parse all directives.
 
     identification        = parse_mandatory_single_line_directive (dv, 'I')
     stu_values            = parse_value_directives                (dv, "STU")
-    vwx_values            = parse_value_directives                (dv, "VWX")
     name                  = parse_mandatory_single_line_directive (dv, 'N')
     comments              = parse_optional_multiline_directive    (dv, 'C')
     detailed_references   = parse_optional_multiline_directive    (dv, 'D')
@@ -448,38 +469,11 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
     extensions_and_errors = parse_optional_multiline_directive    (dv, 'E')
 
     # Process the %K directive.
-    # We parse the keywords first, they may influence the warnings.
+    # We parse the keywords first, since they may influence the warnings.
 
     keywords = keywords.split(",")
 
-    # Check for unexpected keywords.
-
-    unexpected_keywords = set(keywords) - expected_keywords_set
-
-    for unexpected_keyword in sorted(unexpected_keywords):
-        if unexpected_keyword == "":
-            found_issue(OeisIssue(
-                oeis_id,
-                OeisIssueType.P13,
-                "Unexpected empty keyword in %K directive value."
-            ))
-        else:
-            found_issue(OeisIssue(
-                oeis_id,
-                OeisIssueType.P15,
-                "Unexpected keyword '{}' in %K directive value.".format(unexpected_keyword)
-            ))
-
-    # Check for duplicate keywords.
-
-    keyword_counter = collections.Counter(keywords)
-    for (keyword, count) in keyword_counter.items():
-        if count > 1:
-            found_issue(OeisIssue(
-                oeis_id,
-                OeisIssueType.P11,
-                "Keyword '{}' occurs {} times in %K directive value.".format(keyword, count)
-            ))
+    check_keywords(oeis_id, keywords, found_issue)
 
     # Canonify keywords: remove empty keywords and duplicates. We do not sort, though.
 
@@ -488,7 +482,7 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
         if not (keyword == "" or keyword in canonized_keywords):
             canonized_keywords.append(keyword)
 
-    # Process %I directive
+    # Process %I directive.
 
     if identification == "":
         identification = None
@@ -500,28 +494,21 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
                 "Unusual %I directive value: '{}'.".format(identification)
             ))
 
-    # Process value directives (%S/%T/%U and %V/%W/%X)
-
-    assert stu_values is not None
+    # Process value directives (%S/%T/%U --> STU).
 
     if len(stu_values) == 0:
-        found_issue(OeisIssue(
-            oeis_id,
-            OeisIssueType.P03,
-            "No values listed (empty %S directive)."
-        ))
+        if "allocated" not in keywords:
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P03,
+                "No values listed (empty %S directive)."
+            ))
 
-    # Merge STU values and VWX values (if the latter are present).
+    # We no longer need to merge STU and VWX values; the latter are no longer used.
 
-    if vwx_values is None:
-        main_values = stu_values
-    else:
-        assert any(vwx_value < 0 for vwx_value in vwx_values)
-        assert len(stu_values) == len(vwx_values)
-        assert [abs(v) for v in vwx_values] == stu_values
-        main_values = vwx_values
+    main_values = stu_values
 
-    if "dead" not in keywords and "sign" not in keywords and any(value < 0 for value in main_values):
+    if ("dead" not in keywords) and ("sign" not in keywords) and any(value < 0 for value in main_values):
         found_issue(OeisIssue(
             oeis_id,
             OeisIssueType.P19,
@@ -537,33 +524,30 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
                 "Sequence contains extremely large values (up to {} digits).".format(max_digits)
             ))
 
-    # Process %A directive
+    # Process %A directive.
 
     if author is None:
-        found_issue(OeisIssue(
-            oeis_id,
-            OeisIssueType.P01,
-            "Missing %A directive."
-        ))
+        if ("dead" not in keywords) and ("allocated" not in keywords):
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P01,
+                "Missing %A directive."
+            ))
 
-    # Process %O directive
+    # Process %O directive.
 
     if offset is None:
-        found_issue(OeisIssue(
-            oeis_id,
-            OeisIssueType.P02,
-            "Missing %O directive."
-        ))
+        if "allocated" not in keywords:
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P02,
+                "Missing %O directive in entry that doesn't have the 'allocated' keyword."
+            ))
         offset_a = None
         offset_b = None
     else:
         offset_values = [int(o) for o in offset.split(",")]
         if len(offset_values) == 1:
-            found_issue(OeisIssue(
-                oeis_id,
-                OeisIssueType.P04,
-                "The %O directive only has a single value ({}).".format(offset_values[0])
-            ))
             offset_a = offset_values[0]
             offset_b = None
         elif len(offset_values) == 2:
@@ -579,6 +563,23 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
             offset_a, offset_b, author, extensions_and_errors)
 
 
+def calc_lines_needed(values, max_line_length):
+    if len(values) == 0:
+        return 0
+    lengths = [len(str(value))+1 for value in values]
+    lengths[-1] -= 1  # The last value doesn't need a comma after it.
+
+    current_line = 1
+    current_pos_in_line = 0
+    for length in lengths:
+        place_on_current_line = (current_pos_in_line == 0 or current_pos_in_line + length <= max_line_length)
+        if not place_on_current_line:
+            current_line += 1
+            current_pos_in_line = 0
+        current_pos_in_line += length
+    return current_line
+
+
 def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_issue: Callable[[OeisIssue], None]) -> OeisEntry:
 
     (identification, main_values, name, comments, detailed_references, links, formulas, examples,
@@ -588,7 +589,7 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
 
     (bfile_first_index, bfile_values) = parse_bfile_content(oeis_id, bfile_content, found_issue)
 
-    # Merge values obtained from S/T/U or V/W/X directives in main_content with the b-file values.
+    # Merge values obtained from S/T/U directives in main_content with the b-file values.
 
     if len(main_values) > len(bfile_values):
         found_issue(OeisIssue(
@@ -614,6 +615,16 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
         # the main file values are the safest choice.
         values = main_values
 
+    lines_needed = calc_lines_needed(values, 90)
+    if lines_needed <= 3:
+        # The values can fit in the %S %T %U directives.
+        if not ("b-file synthesized from sequence entry" in bfile_content):
+            found_issue(OeisIssue(
+                oeis_id,
+                OeisIssueType.P31,
+                "A b-file is present, but the values can fit in {} lines.".format(lines_needed)
+            ))
+
     if offset_a is not None:
 
         if offset_a != bfile_first_index:
@@ -624,20 +635,43 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
                     offset_a, bfile_first_index)
             ))
 
-    if offset_b is not None:
+    # The following OEIS entries have a known offset_b value beyond the available values:
+    offset_b_hardcoded = {
+        93957: 343,
+        93958: 3908,
+        216280 : 635318657,
+        216284 : 635318657,
+        327861 : 4153248
+    }
 
+    expected_offset_b_value = offset_b_hardcoded.get(oeis_id)
+
+    if expected_offset_b_value is None:
+        
         indices_where_magnitude_exceeds_one = [i for i in range(len(values)) if abs(values[i]) > 1]
-
+        
         if len(indices_where_magnitude_exceeds_one) > 0:
             expected_offset_b_value = 1 + min(indices_where_magnitude_exceeds_one)
+            expected_offset_b_value_str = str(expected_offset_b_value)
         else:
             expected_offset_b_value = 1
+            expected_offset_b_value_str = "1 (none)"
+
+    if offset_b is None:
+
+        found_issue(OeisIssue(
+            oeis_id,
+            OeisIssueType.P04,
+            "The %O directive has no second value that indicates where the sequence magnitude first exceeds 1; we'd expect that value to be {}.".format(expected_offset_b_value_str)
+        ))
+
+    else:
 
         if offset_b != expected_offset_b_value:
             found_issue(OeisIssue(
                 oeis_id,
                 OeisIssueType.P09,
-                "%O directive claims first element where magnitude exceeds 1 is at position {}, but values suggest this should be {}.".format(offset_b, expected_offset_b_value)
+                "%O directive second value claims thet the first element where magnitude exceeds 1 is at position {}, but values suggest this should be {}.".format(offset_b, expected_offset_b_value_str)
             ))
 
     # Return parsed values as an OeisEntry.
