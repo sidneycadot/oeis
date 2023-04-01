@@ -19,9 +19,10 @@ class FetchResult(NamedTuple):
 
 def _fetch_url(url: str) -> str:
     """Fetch the given URL as a string."""
-    with urllib.request.urlopen(url) as response:
-        return response.read().decode(response.headers.get_content_charset() or 'utf-8')
-
+    with urllib.request.urlopen(url, timeout=60.0) as response:
+        raw = response.read()
+    decoded = raw.decode(response.headers.get_content_charset() or 'utf-8')
+    return decoded
 
 def strip_main_content(content: str) -> bool:
     """Check if the main content of an OEIS entry appears to be okay.
@@ -43,13 +44,15 @@ def strip_main_content(content: str) -> bool:
     last two lines, and return the result.
     """
 
-    lines = content.splitlines()
+    # The 'splitlines' method splits both on \n and on \u2028.
+    # We keep the line endings so we can do perfect reconstruction after removinbg the header and footer.
+    lines = content.splitlines(keepends=True)
 
-    if lines[3] != "Showing 1-1 of 1":
+    if lines[3] != "Showing 1-1 of 1\n":
         raise ValueError()
 
     lines = lines[5:-2]
-    return "".join(line + "\n" for line in lines)
+    return "".join(lines)
 
 
 def fetch_remote_oeis_entry(oeis_id: int, fetch_bfile_flag: bool) -> FetchResult:
