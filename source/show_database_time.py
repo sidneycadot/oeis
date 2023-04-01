@@ -6,6 +6,7 @@ import sqlite3
 import datetime
 import logging
 import argparse
+from typing import Optional
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -16,7 +17,7 @@ from utilities.setup_logging import setup_logging
 logger = logging.getLogger(__name__)
 
 
-def show_entries(database_filename: str) -> None:
+def show_entries(database_filename: str, output_filename: Optional[str], output_dpi: Optional[int]) -> None:
     """Read database entries and show a plot of their timing information."""
 
     if not os.path.exists(database_filename):
@@ -47,43 +48,51 @@ def show_entries(database_filename: str) -> None:
 
     plt.clf()
 
+    plt.gcf().set_size_inches(16, 9)
+
     dt_now = datetime.datetime.fromtimestamp(t_now)
     dt_now_str = dt_now.strftime("%Y-%m-%d %H:%M:%S")
 
-    plt.suptitle("OEIS local database status on {}\n{} entries; oldest: {:.1f} min; youngest: {:.1f} min".format(
-        dt_now_str, len(data), np.amax(age) / 60.0, np.amin(age) / 60.0))
+    plt.suptitle("OEIS local database status on {}:\n{} entries with ages from {:.1f} minutes to {:.3f} days.".format(
+        dt_now_str, len(data), np.amin(age) / 60.0, np.amax(age) / 86400.0))
 
     plt.subplots_adjust(wspace = 0.6, hspace=0.6)
 
     plt.subplot(331)
-    plt.xlabel("oeis id (/1000)")
+    plt.xlabel("oeis id (×1000)")
     plt.ylabel("t1 [h]")
+    plt.grid()
     plt.plot(oeis_id / 1000.0, (t1 - t_now) / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(332)
-    plt.xlabel("oeis id (/1000)")
+    plt.xlabel("oeis id (×1000)")
     plt.ylabel("t2 [h]")
+    plt.grid()
     plt.plot(oeis_id / 1000.0, (t2 - t_now) / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(333)
     plt.xlabel("t1 [h]")
     plt.ylabel("t2 [h]")
+    plt.grid()
     plt.plot((t1 - t_now) / 3600.0, (t2 - t_now) / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(334)
     plt.hist(age / 3600.0, bins = 200, log = True)
+    plt.grid()
     plt.xlabel("age [h]")
 
     plt.subplot(335)
     plt.xlabel("stability [h]")
     plt.ylabel("age [h]")
+    plt.grid()
     plt.plot(stability / 3600.0, age / 3600.0, '.', markersize = 0.5)
 
     plt.subplot(336)
 
-    (almost_highest, really_highest) = np.percentile(priority, [99.0, 100.0])
+    (almost_highest, really_highest) = np.percentile(priority, [99.99, 100.0])
     range_max = really_highest if really_highest / almost_highest < 2.0 else almost_highest
 
+    plt.grid()
     plt.hist(priority, range = (0, range_max), bins = 200, log = True)
 
     left_out = np.sum(priority > range_max)
@@ -93,10 +102,14 @@ def show_entries(database_filename: str) -> None:
         plt.xlabel("priority (age/stability) [-]\n(omitted highest {} entries)".format(left_out))
 
     plt.subplot(338)
-    plt.hist(stability / 3600.0, bins = 200, log = True)
     plt.xlabel("stability [h]")
+    plt.grid()
+    plt.hist(stability / 3600.0, bins = 200, log = True)
 
-    plt.show()
+    if output_filename is None:
+        plt.show()
+    else:
+        plt.savefig(output_filename, dpi=output_dpi)
 
 
 def main():
@@ -105,13 +118,15 @@ def main():
 
     parser = argparse.ArgumentParser(description="Show graphs of timing info of OEIS entries in an SQLite3 database.")
 
-    parser.add_argument("-f", dest="filename", type=str, default=default_database_filename, help="OEIS SQLite3 database (default: {})".format(default_database_filename))
+    parser.add_argument("-f", dest="database_filename", type=str, default=default_database_filename, help="OEIS SQLite3 database (default: {})".format(default_database_filename))
+    parser.add_argument("-o", dest="output_filename", type=str, help="Output filename")
+    parser.add_argument("--dpi", dest="output_dpi", type=int, help="Output file dots-per-inch")
 
     args = parser.parse_args()
 
     with setup_logging():
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
-        show_entries(args.filename)
+        show_entries(args.database_filename, args.output_filename, args.output_dpi)
 
 
 if __name__ == "__main__":
