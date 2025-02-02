@@ -632,6 +632,7 @@ def parse_oeis_entry(oeis_id: int, main_content: str, bfile_content: str, found_
             first_index_where_magnitude_exceeds_1 = 1 + min(indexes_where_magnitude_exceeds_1)
 
             if offset_b != first_index_where_magnitude_exceeds_1:
+                # The following sequences are excempt from this.
                 found_issue(OeisIssue(
                     oeis_id,
                     OeisIssueType.P09,
