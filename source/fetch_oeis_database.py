@@ -68,7 +68,7 @@ def find_highest_valid_oeis_id(db_conn, success_id: Optional[int]=None) -> int:
     """
 
     if success_id is None:
-        success_id = 360000  # We know a-priori that this value exists.
+        success_id = 365000  # We know a-priori that this value exists.
 
     sleep_after_failure = 5.0
 
@@ -375,8 +375,23 @@ def update_database_entries_by_priority(db_conn, max_count: int):
 
     fetch_entries_into_database(db_conn, highest_priority_entries)
 
+    
+def update_database_entries_by_age(db_conn, max_count: int):
+    """Re-fetch entries that are old."""
 
-def update_database_entries_for_nonzero_time_window(db_conn):
+    with close_when_done(db_conn.cursor()) as dbcursor:
+        query = "SELECT oeis_id FROM oeis_entries ORDER BY t2 ASC LIMIT ?;"
+        dbcursor.execute(query, (max_count, ))
+        oldest_entries = dbcursor.fetchall()
+
+    oldest_entries = [oeis_id for (oeis_id, ) in oldest_entries]
+
+    logger.info("Oldest entries in local database selected for refresh: %d.", len(oldest_entries))
+
+    fetch_entries_into_database(db_conn, oldest_entries)
+
+
+def update_database_entries_with_zero_time_window(db_conn):
     """Re-fetch entries in the database that have a zero-second time window.
 
     These are entries that have been fetched only once so far.
@@ -480,16 +495,26 @@ def database_update_cycle(database_filename: str, highest_valid_oeis_id: Optiona
 
             # Ensure that the database is properly initialized.
             ensure_database_schema_created(db_conn)
-            # Make sure we have all entries (full fetch on first run).
-            make_database_complete(db_conn, highest_valid_oeis_id)
+
             # Refresh entries found in the "oeis_fetch.txt" file.
             update_database_manual_fetch(db_conn, "oeis_fetch.txt", highest_valid_oeis_id)
+
+            # Make sure we have all entries (full fetch on first run).
+            make_database_complete(db_conn, highest_valid_oeis_id)
+
             # Refresh 0.05 % of entries randomly.
             update_database_entries_randomly(db_conn, round(0.0005 * highest_valid_oeis_id))
-            # Refresh 0.20 % of entries by priority.
-            update_database_entries_by_priority(db_conn, round(0.0020 * highest_valid_oeis_id))
-            # Make sure we have t1 != t2 for all entries (full fetch on first run).
-            update_database_entries_for_nonzero_time_window(db_conn)
+
+            # Refresh 0.05 % of entries by priority (age / stability).
+            # We require that (t1 != t2) here, otherwise we divide by zero.
+            update_database_entries_with_zero_time_window(db_conn)
+            update_database_entries_by_priority(db_conn, round(0.0005 * highest_valid_oeis_id))
+
+            # Refresh 0.05 % of entries by age.
+            update_database_entries_by_age(db_conn, round(0.0005 * highest_valid_oeis_id))
+
+            # Make sure once again that t1 != t2 for all entries.
+            update_database_entries_with_zero_time_window(db_conn)
 
         consolidate_database_monthly(database_filename, remove_stale_files_flag = False)
 

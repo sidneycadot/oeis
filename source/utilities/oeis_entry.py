@@ -75,9 +75,13 @@ class OeisIssue(NamedTuple):
     description: str
 
 # Note that the %V / %W / %X directives have been retired.
-expected_directive_order = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*$")
+expected_directive_order_pattern = re.compile("I(?:S|ST|STU)NC*D*H*F*e*p*t*o*Y*KO?A?E*")
 
-identification_pattern = re.compile("[MN][0-9]{4}( [MN][0-9]{4})*$")
+identification_pattern = re.compile("|".join([
+    "(?:[MN][0-9]{4}(?: [MN][0-9]{4})* #.*)",
+    "(?:[MN][0-9]{4}(?: [MN][0-9]{4})*)",
+    "(?:#.*)"
+]))
 
 # The expected keywords are documented in three places:
 #
@@ -418,7 +422,7 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
 
     directive_order = "".join(directive for (directive, directive_value) in directives)
 
-    if not expected_directive_order.match(directive_order):
+    if not expected_directive_order_pattern.fullmatch(directive_order):
         raise RuntimeError("Unexpected directive order: {!r}".format(directive_order))
 
     # Collect directives
@@ -487,7 +491,8 @@ def parse_main_content(oeis_id, main_content, found_issue: Callable[[OeisIssue],
     if identification == "":
         identification = None
     else:
-        if identification_pattern.match(identification) is None:
+        if identification_pattern.fullmatch(identification) is None:
+            print("@@", oeis_id, repr(identification))
             found_issue(OeisIssue(
                 oeis_id,
                 OeisIssueType.P14,
