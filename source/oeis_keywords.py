@@ -19,25 +19,23 @@ from utilities.setup_logging import setup_logging
 logger = logging.getLogger(__name__)
 
 
-def process_oeis_entry(oeis_entry: Tuple[int, str, str]) -> List[OeisIssue]:
+def process_oeis_entry(oeis_entry: Tuple[int, str, str]):
 
     (oeis_id, main_content, bfile_content) = oeis_entry
 
-    issues = []
+    parsed_oeis_entry = parse_oeis_entry(oeis_id, main_content, bfile_content, lambda x: x)
 
-    parse_oeis_entry(oeis_id, main_content, bfile_content, issues.append)
+    return (oeis_id, parsed_oeis_entry.keywords)
 
-    return issues
-
-
-def process_database_entries(database_filename: str, lint_output_filename: str) -> None:
+def process_database_entries(database_filename: str) -> None:
 
     if not os.path.exists(database_filename):
         logger.critical("Database file '%s' not found! Unable to continue.", database_filename)
         return
 
     batch_size = 1000
-    issues: List[OeisIssue] = []
+
+    keywords = []
 
     with start_timer() as timer, \
          close_when_done(sqlite3.connect(database_filename)) as db_conn, \
@@ -54,38 +52,26 @@ def process_database_entries(database_filename: str, lint_output_filename: str) 
             if len(oeis_entries) == 0:
                 break
 
-            logger.log(logging.PROGRESS, "Processing OEIS entries A%06d to A%06d (issues found so far: %d) ...",
-                       oeis_entries[0][0], oeis_entries[-1][0], len(issues))
+            logger.log(logging.PROGRESS, "Processing OEIS entries A%06d to A%06d ...",
+                       oeis_entries[0][0], oeis_entries[-1][0])
 
             for processed in pool.map(process_oeis_entry, oeis_entries):
-                issues.extend(processed)
+                keywords.append(processed)
 
-        logger.info("Processed all database entries in %s (issues found: %d).",
-                    timer.duration_string(), len(issues))
+        logger.info("Processed all database entries in %s.", timer.duration_string())
 
-        counter = Counter(issue.issue_type for issue in issues)
-
-        logger.info("=== ISSUE TYPE COUNT REPORT ===")
-        for (issue_type, count) in counter.most_common():
-            logger.info("{:6d} {:3s} - {}".format(count, issue_type.name, issue_type.value))
-        logger.info("=== END OF ISSUE TYPE COUNT REPORT ===")
-
-        with open(lint_output_filename, "w") as fo:
-            for issue in issues:
-                print("A{:06d} ({:3s}) {:s}".format(issue.oeis_id, issue.issue_type.name, issue.description), file=fo)
-
-        logger.info("Wrote '%s'", lint_output_filename)
+        with open("keywords.txt", "w") as fo:
+            for (oeis_id, kw) in keywords:
+                print("A{:06d}  {}".format(oeis_id, ",".join(kw)), file=fo)
 
 
 def main():
 
     default_database_filename = "oeis.sqlite3"
-    default_lint_output_filename = "oeislint_output.txt"
 
     parser = argparse.ArgumentParser(description="Check all OEIS entries in a SQLite3 database.")
 
     parser.add_argument("-f", dest="filename", type=str, default=default_database_filename, help="OEIS SQLite3 database (default: {})".format(default_database_filename))
-    parser.add_argument("--lint-output-filename", "-o", type=str, default=default_lint_output_filename, help="output filename (default: '{}')".format(default_lint_output_filename))
 
     args = parser.parse_args()
 
@@ -97,7 +83,7 @@ def main():
         except AttributeError:
             pass
 
-        process_database_entries(args.filename, args.lint_output_filename)
+        process_database_entries(args.filename)
 
 
 if __name__ == "__main__":

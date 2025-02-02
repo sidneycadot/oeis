@@ -19,11 +19,12 @@ class FetchResult(NamedTuple):
 
 def _fetch_url(url: str) -> str:
     """Fetch the given URL as a string."""
-    with urllib.request.urlopen(url) as response:
-        return response.read().decode(response.headers.get_content_charset() or 'utf-8')
+    with urllib.request.urlopen(url, timeout=60.0) as response:
+        raw = response.read()
+    decoded = raw.decode(response.headers.get_content_charset() or 'utf-8')
+    return decoded
 
-
-def _main_content_ok(content: str) -> bool:
+def strip_main_content(content: str) -> bool:
     """Check if the main content of an OEIS entry appears to be okay.
 
     A properly formatted content as obtained from the server has 5 header lines, content, and 2 footer lines:
@@ -39,11 +40,19 @@ def _main_content_ok(content: str) -> bool:
 
     All lines (including the last one) are terminated with a single newline character.
 
-    Here, we simply check the fourth line to assess the correctness of the response.
+    Here, we check the fourth line to assess the correctness of the response. If okay, we strip the first five and
+    last two lines, and return the result.
     """
 
-    lines = content.splitlines()
-    return (lines[3] == "Showing 1-1 of 1")
+    # The 'splitlines' method splits both on \n and on \u2028.
+    # We keep the line endings so we can do perfect reconstruction after removinbg the header and footer.
+    lines = content.splitlines(keepends=True)
+
+    if lines[3] != "Showing 1-1 of 1\n":
+        raise ValueError()
+
+    lines = lines[5:-2]
+    return "".join(lines)
 
 
 def fetch_remote_oeis_entry(oeis_id: int, fetch_bfile_flag: bool) -> FetchResult:
@@ -58,7 +67,9 @@ def fetch_remote_oeis_entry(oeis_id: int, fetch_bfile_flag: bool) -> FetchResult
 
     main_content = _fetch_url(main_url)
 
-    if not _main_content_ok(main_content):
+    try:
+        main_content = strip_main_content(main_content)
+    except ValueError:
         raise BadOeisResponse("OEIS server response indicates failure (url: {})".format(main_url))
 
     bfile_content = _fetch_url(bfile_url) if fetch_bfile_flag else None

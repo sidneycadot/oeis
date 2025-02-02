@@ -19,7 +19,7 @@ import random
 import logging
 import lzma
 import concurrent.futures
-from typing import Set
+from typing import Set, Optional
 
 from utilities.fetch_remote_oeis_entry import fetch_remote_oeis_entry, BadOeisResponse
 from utilities.timer import start_timer
@@ -55,15 +55,53 @@ def ensure_database_schema_created(db_conn):
     db_conn.execute(schema)
 
 
-def find_highest_oeis_id():
-    """Find the highest entry ID in the remote OEIS database by performing HTTP queries and doing a binary search."""
+def find_highest_valid_oeis_id(db_conn, success_id: Optional[int]=None) -> int:
+    """Find the highest entry ID in the remote OEIS database by performing HTTP queries and doing a binary search.
+    
+    Parameters:
+    
+        success_id (int): an OEIS ID value for which we know for sure that it exists.
+
+    Returns:
+
+        int: The highest OEIS ID that currently exists.
+    """
+
+    if success_id is None:
+        success_id = 360000  # We know a-priori that this value exists.
 
     sleep_after_failure = 5.0
 
-    success_id = 350000            # We know a-priori that this entry exists.
-    failure_id = 100 * success_id  # We know a-priori that this entry does not exist.
+    responses = []
+
+    # Find an OEIS ID that does not yet exist.
+
+    fetch_id = success_id + 1
+    while True:
+
+        logger.info("Seaching for invalid OEIS entry, attempting to fetch entry %d ...", fetch_id)
+
+        try:
+            result = fetch_remote_oeis_entry(fetch_id, fetch_bfile_flag = True)
+            responses.append(result)
+        except BadOeisResponse:
+            # This exception happens when trying to read beyond the last entry in the database.
+            # We mark the failure and continue the binary search.
+            logging.info("OEIS entry %d does not exist.", fetch_id)
+            failure_id = fetch_id  # The entry cannot be fetched because it doesn't exist (yet).
+            break
+        except BaseException as exception:
+            # Some other error occurred. We have to retry.
+            logger.error("Unexpected fetch result (%s), retrying in %f seconds.", exception, sleep_after_failure)
+            time.sleep(sleep_after_failure)
+        else:
+            # The entry was successfully retrieved, so we didn't reach the failure_id, yet.
+            logging.info("OEIS entry %d exists.", fetch_id)
+            # We first try (success_id + 1), then (success_id + 2), then success_id + 4), then (success_id + 8), and so on.
+            fetch_id += (fetch_id - success_id)
 
     # Do a binary search, looking for the success/failure boundary.
+
     while success_id + 1 != failure_id:
 
         fetch_id = (success_id + failure_id) // 2
@@ -71,7 +109,9 @@ def find_highest_oeis_id():
         logger.info("OEIS search range is (%d, %d), attempting to fetch entry %d ...", success_id, failure_id, fetch_id)
 
         try:
-            fetch_remote_oeis_entry(fetch_id, fetch_bfile_flag = False)
+            result = fetch_remote_oeis_entry(fetch_id, fetch_bfile_flag = True)
+            responses.append(result)
+
         except BadOeisResponse:
             # This exception happens when trying to read beyond the last entry in the database.
             # We mark the failure and continue the binary search.
@@ -87,6 +127,8 @@ def find_highest_oeis_id():
             success_id = fetch_id
 
     logger.info("Last valid OEIS entry is A%06d.", success_id)
+
+    process_responses(db_conn, responses)
 
     return success_id
 
@@ -174,7 +216,7 @@ def process_responses(db_conn, responses) -> Set[int]:
 
 
 def fetch_entries_into_database(db_conn, entries) -> None:
-    """Fetch a set of entries from the remote OEIS database and store the results in the database.
+    """Fetch entries from the remote OEIS database and store the results in the local database.
 
     The 'entries' parameter contains a number of OEIS IDs.
     This function can handle a large number of entries, up to the entire size of the OEIS database.
@@ -187,11 +229,17 @@ def fetch_entries_into_database(db_conn, entries) -> None:
     The responses of each batch are processed by the 'process_responses' function defined above.
     """
 
-    fetch_batch_size = 500   # 100 -- 1000 are reasonable
-    num_workers = 20         # 10 -- 20 are reasonable
+    remaining_entries = set(entries)
+
+    if len(remaining_entries) == 0:
+        logger.info("Request to fetch 0 entries ignored.")
+        return  # Nothing to fetch.
+
+    fetch_batch_size  = 500  # 100 -- 1000 are reasonable
+    max_num_workers   = 10   # 10 -- 20 are reasonable
     sleep_after_batch = 2.0  # in [seconds]
 
-    remaining_entries = set(entries)
+    num_workers = min(max_num_workers, len(remaining_entries))
 
     with start_timer(len(remaining_entries)) as timer, concurrent.futures.ThreadPoolExecutor(num_workers) as executor:
 
@@ -420,25 +468,26 @@ def consolidate_database_monthly(database_filename: str, remove_stale_files_flag
         logger.info("Consolidating data took %s.", timer.duration_string())
 
 
-def database_update_cycle(database_filename: str) -> None:
+def database_update_cycle(database_filename: str, highest_valid_oeis_id: Optional[int]) -> int:
     """Perform a single cycle of the database update loop."""
 
     with start_timer() as timer:
 
-        # Check the OEIS server for the highest entry ID present.
-        highest_oeis_id = find_highest_oeis_id()
-
         with close_when_done(sqlite3.connect(database_filename)) as db_conn:
+
+            # Check the OEIS server for the highest entry ID present.
+            highest_valid_oeis_id = find_highest_valid_oeis_id(db_conn, highest_valid_oeis_id)
+
             # Ensure that the database is properly initialized.
             ensure_database_schema_created(db_conn)
             # Make sure we have all entries (full fetch on first run).
-            make_database_complete(db_conn, highest_oeis_id)
+            make_database_complete(db_conn, highest_valid_oeis_id)
             # Refresh entries found in the "oeis_fetch.txt" file.
-            update_database_manual_fetch(db_conn, "oeis_fetch.txt", highest_oeis_id)
-            # Refresh 0.1 % of entries randomly.
-            update_database_entries_randomly(db_conn, highest_oeis_id // 1000)
-            # Refresh 0.5 % of entries by priority.
-            update_database_entries_by_priority(db_conn, highest_oeis_id // 200)
+            update_database_manual_fetch(db_conn, "oeis_fetch.txt", highest_valid_oeis_id)
+            # Refresh 0.05 % of entries randomly.
+            update_database_entries_randomly(db_conn, round(0.0005 * highest_valid_oeis_id))
+            # Refresh 0.20 % of entries by priority.
+            update_database_entries_by_priority(db_conn, round(0.0020 * highest_valid_oeis_id))
             # Make sure we have t1 != t2 for all entries (full fetch on first run).
             update_database_entries_for_nonzero_time_window(db_conn)
 
@@ -446,24 +495,38 @@ def database_update_cycle(database_filename: str) -> None:
 
         logger.info("Full database update cycle took %s.", timer.duration_string())
 
+    return highest_valid_oeis_id
+
 
 def database_update_cycle_loop(database_filename: str) -> None:
     """Call the database update cycle in an infinite loop, with random pauses in between."""
 
+    highest_valid_oeis_id = None
+
     while True:
 
         try:
-            database_update_cycle(database_filename)
+            highest_valid_oeis_id = database_update_cycle(database_filename, highest_valid_oeis_id)
         except KeyboardInterrupt:
-            logger.info("Keyboard interrupt request received, ending database update cycle loop...")
+            logger.info("Received keyboard interrupt, ending database update cycle loop ...")
             break
         except BaseException as exception:
             logger.error("Error while performing database update cycle: '%s'.", exception)
 
         # Pause between update cycles.
         pause = max(300.0, random.gauss(1800.0, 600.0))
-        logger.info("Sleeping for %.1f seconds ...", pause)
-        time.sleep(pause)
+        logger.info("Sleeping for %.1f seconds. Type Ctrl-C to wake up ...", pause)
+        try:
+            time.sleep(pause)
+        except KeyboardInterrupt as exception:
+            print()
+            logger.info("Received keyboard interrupt. Press Ctrl-C again in the next 3 seconds to quit.")
+            try:
+                time.sleep(3.0)
+            except KeyboardInterrupt as exception:
+                print()
+                logger.info("Received second keyboard interrupt, ending database update cycle loop ...")
+                break
 
 
 def main():
